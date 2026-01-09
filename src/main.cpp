@@ -68,11 +68,11 @@ int main(int argc, char *argv[]) {
     cout << unitbuf;
     cerr << unitbuf;
 
-    cerr << "Logs from your program will appear here!" << endl;
-
+    int exitCode = 0;
     if (argc < 3) {
         cerr << "Usage: ./your_program tokenize <filename>" << endl;
-        return 1;
+        exitCode = 1;
+        return exitCode;
     }
 
     const string command = argv[1];
@@ -90,15 +90,16 @@ int main(int argc, char *argv[]) {
             else {
                 cout<<errors[errorCnt]<<endl;
                 errorCnt++;
+                exitCode = 1;
             }
         }
     } 
     else {
         cerr << "Unknown command: " << command << endl;
-        return 1;
+        exitCode = 1;
     }
 
-    return 0;
+    return exitCode;
 }
 
 string read_file_contents(const string& filename) {
