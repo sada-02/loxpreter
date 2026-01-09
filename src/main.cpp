@@ -44,6 +44,9 @@ void handleTokenisation(string& file) {
         else if(c == ',') {
             Tokens.push_back({"COMMA",",","null"});
         }
+        else if(c == '-') {
+            Tokens.push_back({"MINUS","-","null"});
+        }
     }
 
     Tokens.push_back({"EOF","","null"});
