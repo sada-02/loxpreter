@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
                 cout<<t.type<<" "<<t.lexeme<<" "<<t.literal<<endl;
             }
             else {
-                cout<<errors[errorCnt]<<endl;
+                cerr<<errors[errorCnt]<<endl;
                 errorCnt++;
                 exitCode = 65;
             }
