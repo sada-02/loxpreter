@@ -21,7 +21,15 @@ vector<string> errors;
 int lineNo ;
 
 void handleTokenisation(string& file) {
+    bool insideComment = false;
     for(int i=0 ;i<file.size() ;i++) {
+        if(insideComment) {
+            if(file[i] == '\n') {
+                insideComment = false;
+                lineNo++;
+            }
+            continue;
+        }
         if(file[i] == '(') {
             Tokens.push_back({"LEFT_PAREN","(","null"});
         }
@@ -51,6 +59,22 @@ void handleTokenisation(string& file) {
         }
         else if(file[i] == ';') {
             Tokens.push_back({"SEMICOLON",";","null"});
+        }
+        else if(file[i] == '/') {
+            bool flag = true;
+            if(i+1 < file.size()) {
+                if(file[i+1] == '/') {
+                    insideComment = true;
+                    flag = false;
+                }
+            }
+
+            if(flag) {
+                Tokens.push_back({"SLASH","/","null"});
+            }
+            else {
+                i++;
+            }
         }
         else if(file[i] == '=') {
             bool flag = true;
