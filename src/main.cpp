@@ -26,6 +26,12 @@ void handleTokenisation(string& file) {
         else if(c == ')') {
             Tokens.push_back({"RIGHT_PAREN",")","null"});
         }
+        else if(c == '{') {
+            Tokens.push_back({"LEFT_BRACE","{","null"});
+        }
+        else if(c == '}') {
+            Tokens.push_back({"RIGHT_BRACE","}","null"});
+        }
     }
 
     Tokens.push_back({"EOF","","null"});
