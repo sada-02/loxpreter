@@ -17,6 +17,8 @@ struct tok{
 };
 
 vector<tok> Tokens;
+vector<string> errors;
+int lineNo ;
 
 void handleTokenisation(string& file) {
     for(char c : file) {
@@ -50,6 +52,13 @@ void handleTokenisation(string& file) {
         else if(c == ';') {
             Tokens.push_back({"SEMICOLON",";","null"});
         }
+        else if(c == '\n') {
+            lineNo++;
+        }
+        else {
+            Tokens.push_back({"error","",""});
+            errors.push_back("[line " + to_string(lineNo) + "] Error: Unexpected character: "+c);
+        }
     }
 
     Tokens.push_back({"EOF","","null"});
@@ -69,11 +78,19 @@ int main(int argc, char *argv[]) {
     const string command = argv[1];
 
     if (command == "tokenize") {
+        lineNo = 1;
         string file = read_file_contents(argv[2]);
 
         handleTokenisation(file);
+        int errorCnt = 0;
         for(auto& t : Tokens) {
-            cout<<t.type<<" "<<t.lexeme<<" "<<t.literal<<endl;
+            if(t.type != "error") {
+                cout<<t.type<<" "<<t.lexeme<<" "<<t.literal<<endl;
+            }
+            else {
+                cout<<errors[errorCnt]<<endl;
+                errorCnt++;
+            }
         }
     } 
     else {
