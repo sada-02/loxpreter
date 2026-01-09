@@ -13,7 +13,7 @@ struct tok{
     string lexeme;
     string literal;
 
-    tok(string t , string lex , string lit) : type {t} , lexeme {lex} , literal {lex} {}
+    tok(string t , string lex , string lit) : type {t} , lexeme {lex} , literal {lit} {}
 };
 
 vector<tok> Tokens;
@@ -21,14 +21,14 @@ vector<tok> Tokens;
 void handleTokenisation(string& file) {
     for(char c : file) {
         if(c == '(') {
-            Tokens.push_back({"LEFT_PAREN","(","NULL"});
+            Tokens.push_back({"LEFT_PAREN","(","null"});
         }
         else if(c == ')') {
-            Tokens.push_back({"RIGHT_PAREN",")","NULL"});
+            Tokens.push_back({"RIGHT_PAREN",")","null"});
         }
     }
 
-    Tokens.push_back({"EOF","","NULL"});
+    Tokens.push_back({"EOF","","null"});
 }
 
 int main(int argc, char *argv[]) {
@@ -46,12 +46,8 @@ int main(int argc, char *argv[]) {
 
     if (command == "tokenize") {
         string file = read_file_contents(argv[2]);
-        
-        if (!file.empty()) {
-            cerr << "Scanner not implemented" << endl;
-            return 1;
-        }
 
+        handleTokenisation(file);
         for(auto& t : Tokens) {
             cout<<t.type<<" "<<t.lexeme<<" "<<t.literal<<endl;
         }
