@@ -73,7 +73,7 @@ void handleTokenisation(string& file) {
         }
         else {
             Tokens.push_back({"error","",""});
-            errors.push_back("[line " + to_string(lineNo) + "] Error: Unexpected character: "+s[i]);
+            errors.push_back("[line " + to_string(lineNo) + "] Error: Unexpected character: "+file[i]);
         }
     }
 
