@@ -21,38 +21,54 @@ vector<string> errors;
 int lineNo ;
 
 void handleTokenisation(string& file) {
-    for(char c : file) {
-        if(c == '(') {
+    for(int i=0 ;i<file.size() ;i++) {
+        if(file[i] == '(') {
             Tokens.push_back({"LEFT_PAREN","(","null"});
         }
-        else if(c == ')') {
+        else if(file[i] == ')') {
             Tokens.push_back({"RIGHT_PAREN",")","null"});
         }
-        else if(c == '{') {
+        else if(file[i] == '{') {
             Tokens.push_back({"LEFT_BRACE","{","null"});
         }
-        else if(c == '}') {
+        else if(file[i] == '}') {
             Tokens.push_back({"RIGHT_BRACE","}","null"});
         }
-        else if(c == '*') {
+        else if(file[i] == '*') {
             Tokens.push_back({"STAR","*","null"});
         }
-        else if(c == '+') {
+        else if(file[i] == '+') {
             Tokens.push_back({"PLUS","+","null"});
         }
-        else if(c == '.') {
+        else if(file[i] == '.') {
             Tokens.push_back({"DOT",".","null"});
         }
-        else if(c == ',') {
+        else if(file[i] == ',') {
             Tokens.push_back({"COMMA",",","null"});
         }
-        else if(c == '-') {
+        else if(file[i] == '-') {
             Tokens.push_back({"MINUS","-","null"});
         }
-        else if(c == ';') {
+        else if(file[i] == ';') {
             Tokens.push_back({"SEMICOLON",";","null"});
         }
-        else if(c == '\n') {
+        else if(file[i] == '=') {
+            bool flag = true;
+            if(i+1 < file.size()) {
+                if(file[i+1] == '=') {
+                    Tokens.push_back({"EQUAL_EQUAL","==","null"});
+                    flag = false;
+                }
+            }
+
+            if(flag) {
+                Tokens.push_back({"EQUAL","=","null"});
+            }
+            else {
+                i++;
+            }
+        }
+        else if(file[i] == '\n') {
             lineNo++;
         }
         else {
