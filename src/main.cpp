@@ -60,6 +60,9 @@ void handleTokenisation(string& file) {
         else if(file[i] == ';') {
             Tokens.push_back({"SEMICOLON",";","null"});
         }
+        else if(file[i] == '\t'|| file[i] == ' ') {
+            continue;
+        }
         else if(file[i] == '/') {
             bool flag = true;
             if(i+1 < file.size()) {
