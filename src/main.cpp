@@ -32,6 +32,18 @@ void handleTokenisation(string& file) {
         else if(c == '}') {
             Tokens.push_back({"RIGHT_BRACE","}","null"});
         }
+        else if(c == '*') {
+            Tokens.push_back({"STAR","*","null"});
+        }
+        else if(c == '+') {
+            Tokens.push_back({"PLUS","+","null"});
+        }
+        else if(c == '.') {
+            Tokens.push_back({"DOT",".","null"});
+        }
+        else if(c == ',') {
+            Tokens.push_back({"COMMA",",","null"});
+        }
     }
 
     Tokens.push_back({"EOF","","null"});
