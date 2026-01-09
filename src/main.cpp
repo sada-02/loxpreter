@@ -3,51 +3,47 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-
-std::string read_file_contents(const std::string& filename);
+using namespace std;
+string read_file_contents(const string& filename);
 
 int main(int argc, char *argv[]) {
-    // Disable output buffering
-    std::cout << std::unitbuf;
-    std::cerr << std::unitbuf;
+    cout << unitbuf;
+    cerr << unitbuf;
 
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    std::cerr << "Logs from your program will appear here!" << std::endl;
+    cerr << "Logs from your program will appear here!" << endl;
 
     if (argc < 3) {
-        std::cerr << "Usage: ./your_program tokenize <filename>" << std::endl;
+        cerr << "Usage: ./your_program tokenize <filename>" << endl;
         return 1;
     }
 
-    const std::string command = argv[1];
+    const string command = argv[1];
 
     if (command == "tokenize") {
-        std::string file_contents = read_file_contents(argv[2]);
+        string file_contents = read_file_contents(argv[2]);
         
-        // TODO: Uncomment the code below to pass the first stage
-        // 
-        // if (!file_contents.empty()) {
-        //     std::cerr << "Scanner not implemented" << std::endl;
-        //     return 1;
-        // }
-        // std::cout << "EOF  null" << std::endl; // Placeholder, replace this line when implementing the scanner
-        
-    } else {
-        std::cerr << "Unknown command: " << command << std::endl;
+        if (!file_contents.empty()) {
+            cerr << "Scanner not implemented" << endl;
+            return 1;
+        }
+        cout << "EOF  null" << endl; 
+    } 
+    else {
+        cerr << "Unknown command: " << command << endl;
         return 1;
     }
 
     return 0;
 }
 
-std::string read_file_contents(const std::string& filename) {
-    std::ifstream file(filename);
+string read_file_contents(const string& filename) {
+    ifstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "Error reading file: " << filename << std::endl;
-        std::exit(1);
+        cerr << "Error reading file: " << filename << endl;
+        exit(1);
     }
 
-    std::stringstream buffer;
+    stringstream buffer;
     buffer << file.rdbuf();
     file.close();
 
