@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
             else {
                 cout<<errors[errorCnt]<<endl;
                 errorCnt++;
-                exitCode = 1;
+                exitCode = 65;
             }
         }
     } 
