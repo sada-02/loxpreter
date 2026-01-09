@@ -68,6 +68,22 @@ void handleTokenisation(string& file) {
                 i++;
             }
         }
+        else if(file[i] == '!') {
+            bool flag = true;
+            if(i+1 < file.size()) {
+                if(file[i+1] == '=') {
+                    Tokens.push_back({"BANG_EQUAL","!=","null"});
+                    flag = false;
+                }
+            }
+
+            if(flag) {
+                Tokens.push_back({"BANG","!","null"});
+            }
+            else {
+                i++;
+            }
+        }
         else if(file[i] == '\n') {
             lineNo++;
         }
