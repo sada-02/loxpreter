@@ -12,17 +12,12 @@ string read_file_contents(const string& filename);
 string formatNumber(const string& numStr) {
     double value = stod(numStr);
     ostringstream oss;
-    if(numStr.find('.') == string::npos) {
-        oss << value;
-        string result = oss.str();
-        if(result.find('.') == string::npos) {
-            result += ".0";
-        }
-        return result;
-    } 
-    else {
-        return numStr;
+    oss << value;
+    string result = oss.str();
+    if(result.find('.') == string::npos) {
+        result += ".0";
     }
+    return result;
 }
 
 struct tok{
