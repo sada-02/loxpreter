@@ -502,6 +502,57 @@ struct ReturnStmt : Stmt {
     ~ReturnStmt() { if (value) delete value; }
 };
 
+struct ClassStmt : Stmt {
+    string name;
+    vector<FunStmt*> methods;
+    
+    ClassStmt(string n, vector<FunStmt*> m) : name(n), methods(m) {}
+    
+    ~ClassStmt() {
+        for (auto method : methods) {
+            delete method;
+        }
+    }
+};
+
+struct GetExpr : Expr {
+    Expr* object;
+    string name;
+    
+    GetExpr(Expr* obj, string n) : object(obj), name(n) {}
+    
+    ~GetExpr() { delete object; }
+    
+    string toString() override {
+        return "(get " + object->toString() + " " + name + ")";
+    }
+};
+
+struct SetExpr : Expr {
+    Expr* object;
+    string name;
+    Expr* value;
+    
+    SetExpr(Expr* obj, string n, Expr* v) : object(obj), name(n), value(v) {}
+    
+    ~SetExpr() {
+        delete object;
+        delete value;
+    }
+    
+    string toString() override {
+        return "(set " + object->toString() + " " + name + " " + value->toString() + ")";
+    }
+};
+
+struct ThisExpr : Expr {
+    ThisExpr() {}
+    
+    string toString() override {
+        return "this";
+    }
+};
+
 class Environment {
     private:
     map<string, pair<string, string>> values;
@@ -568,8 +619,12 @@ struct LoxCallable {
 struct LoxFunction : LoxCallable {
     FunStmt* declaration;
     Environment* closure;
+    bool isInitializer;
     
-    LoxFunction(FunStmt* decl, Environment* clos) : declaration(decl), closure(clos) {}
+    LoxFunction(FunStmt* decl, Environment* clos, bool init = false) 
+        : declaration(decl), closure(clos), isInitializer(init) {}
+    
+    LoxFunction* bind(const string& instanceId, const string& instanceType, Interpreter* interpreter);
     
     int arity() override {
         return declaration->params.size();
@@ -598,6 +653,55 @@ struct ClockNative : LoxCallable {
     }
 };
 
+class LoxInstance;
+
+struct LoxClass : LoxCallable {
+    string name;
+    map<string, LoxFunction*> methods;
+    
+    LoxClass(string n, map<string, LoxFunction*> m) : name(n), methods(m) {}
+    
+    int arity() override {
+        LoxFunction* initializer = findMethod("init");
+        if (initializer != nullptr) {
+            return initializer->arity();
+        }
+        return 0;
+    }
+    
+    LoxFunction* findMethod(const string& name) {
+        auto it = methods.find(name);
+        if (it != methods.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+    
+    pair<string, string> call(Interpreter* interpreter, vector<pair<string, string>>& arguments) override;
+    
+    string toString() override {
+        return name;
+    }
+};
+
+class LoxInstance {
+public:
+    LoxClass* klass;
+    map<string, pair<string, string>> fields;
+    
+    LoxInstance(LoxClass* k) : klass(k) {}
+    
+    pair<string, string> get(const string& name);
+    
+    void set(const string& name, const string& value, const string& type) {
+        fields[name] = {value, type};
+    }
+    
+    string toString() {
+        return klass->name + " instance";
+    }
+};
+
 class Resolver {
 private:
     vector<map<string, bool>> scopes;
@@ -607,10 +711,17 @@ private:
     
     enum FunctionType {
         NONE,
-        FUNCTION
+        FUNCTION,
+        METHOD
+    };
+    
+    enum ClassType {
+        NONE_CLASS,
+        CLASS
     };
     
     FunctionType currentFunction;
+    ClassType currentClass;
     
     void beginScope() {
         scopes.push_back(map<string, bool>());
@@ -688,6 +799,21 @@ private:
                 resolveExpr(arg);
             }
         }
+        else if (auto* get = dynamic_cast<GetExpr*>(expr)) {
+            resolveExpr(get->object);
+        }
+        else if (auto* set = dynamic_cast<SetExpr*>(expr)) {
+            resolveExpr(set->value);
+            resolveExpr(set->object);
+        }
+        else if (auto* thisExpr = dynamic_cast<ThisExpr*>(expr)) {
+            if (currentClass == NONE_CLASS) {
+                hadError = true;
+                errorMsg = "Can't use 'this' outside of a class.";
+                return;
+            }
+            resolveLocal(thisExpr, "this");
+        }
     }
     
     void resolveStmt(Stmt* stmt) {
@@ -741,6 +867,38 @@ private:
             
             currentFunction = enclosingFunction;
         }
+        else if (auto* classStmt = dynamic_cast<ClassStmt*>(stmt)) {
+            ClassType enclosingClass = currentClass;
+            currentClass = CLASS;
+            
+            declare(classStmt->name);
+            define(classStmt->name);
+            
+            beginScope();
+            scopes.back()["this"] = true;
+            
+            for (FunStmt* method : classStmt->methods) {
+                FunctionType declaration = METHOD;
+                
+                FunctionType enclosingFunction = currentFunction;
+                currentFunction = declaration;
+                
+                beginScope();
+                for (const string& param : method->params) {
+                    declare(param);
+                    define(param);
+                }
+                for (Stmt* bodyStmt : method->body) {
+                    resolveStmt(bodyStmt);
+                }
+                endScope();
+                
+                currentFunction = enclosingFunction;
+            }
+            
+            endScope();
+            currentClass = enclosingClass;
+        }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (currentFunction == NONE) {
                 hadError = true;
@@ -755,7 +913,7 @@ private:
     }
     
     public:
-    Resolver() : hadError(false), currentFunction(NONE) {}
+    Resolver() : hadError(false), currentFunction(NONE), currentClass(NONE_CLASS) {}
     
     void resolve(const vector<Stmt*>& statements) {
         for (Stmt* stmt : statements) {
@@ -791,7 +949,9 @@ class Interpreter {
     Environment* environment;
     Environment* globals;
     map<string, LoxCallable*> functions;
+    map<string, LoxInstance*> instances;
     int nextFunctionId;
+    int nextInstanceId;
     map<Expr*, int> locals;
     
     void runtimeError(const string& message) {
@@ -826,7 +986,7 @@ class Interpreter {
         string type; 
     };
     
-    Interpreter() : hadRuntimeError(false), runtimeErrorMsg(""), isReturning(false), nextFunctionId(0) {
+    Interpreter() : hadRuntimeError(false), runtimeErrorMsg(""), isReturning(false), nextFunctionId(0), nextInstanceId(0) {
         globals = new Environment();
         environment = globals;
         
@@ -1013,6 +1173,43 @@ class Interpreter {
             auto result = function->call(this, arguments);
             return {result.first, result.second};
         }
+        else if (auto* get = dynamic_cast<GetExpr*>(expr)) {
+            Value object = evaluate(get->object);
+            if (hadRuntimeError) return {"", "nil"};
+            
+            if (object.type == "instance") {
+                LoxInstance* instance = instances[object.val];
+                if (instance != nullptr) {
+                    auto result = instance->get(get->name);
+                    return {result.first, result.second};
+                }
+            }
+            
+            runtimeError("Only instances have properties.");
+            return {"", "nil"};
+        }
+        else if (auto* set = dynamic_cast<SetExpr*>(expr)) {
+            Value object = evaluate(set->object);
+            if (hadRuntimeError) return {"", "nil"};
+            
+            if (object.type != "instance") {
+                runtimeError("Only instances have fields.");
+                return {"", "nil"};
+            }
+            
+            Value value = evaluate(set->value);
+            if (hadRuntimeError) return {"", "nil"};
+            
+            LoxInstance* instance = instances[object.val];
+            if (instance != nullptr) {
+                instance->set(set->name, value.val, value.type);
+            }
+            
+            return value;
+        }
+        else if (auto* thisExpr = dynamic_cast<ThisExpr*>(expr)) {
+            return lookupVariable("this", thisExpr);
+        }
         
         return {"", "nil"};
     }
@@ -1039,6 +1236,14 @@ class Interpreter {
                     LoxCallable* func = functions[value.val];
                     if (func != nullptr) {
                         cout << func->toString() << endl;
+                    } else {
+                        cout << value.val << endl;
+                    }
+                }
+                 else if (value.type == "instance") {
+                    LoxInstance* inst = instances[value.val];
+                    if (inst != nullptr) {
+                        cout << inst->toString() << endl;
                     } else {
                         cout << value.val << endl;
                     }
@@ -1086,6 +1291,18 @@ class Interpreter {
             string functionId = "__fn_" + to_string(nextFunctionId++);
             functions[functionId] = function;
             environment->define(funStmt->name, functionId, "function");
+        }
+        else if (auto* classStmt = dynamic_cast<ClassStmt*>(stmt)) {
+            map<string, LoxFunction*> methods;
+            for (FunStmt* method : classStmt->methods) {
+                LoxFunction* function = new LoxFunction(method, environment);
+                methods[method->name] = function;
+            }
+            
+            LoxClass* klass = new LoxClass(classStmt->name, methods);
+            string classId = "__class_" + to_string(nextFunctionId++);
+            functions[classId] = klass;
+            environment->define(classStmt->name, classId, "function");
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (returnStmt->value != nullptr) {
@@ -1138,6 +1355,40 @@ pair<string, string> LoxFunction::call(Interpreter* interpreter, vector<pair<str
     }
     
     return {"nil", "nil"};
+}
+
+LoxFunction* LoxFunction::bind(const string& instanceId, const string& instanceType, Interpreter* interpreter) {
+    Environment* environment = new Environment(closure);
+    environment->define("this", instanceId, instanceType);
+    return new LoxFunction(declaration, environment, isInitializer);
+}
+
+pair<string, string> LoxClass::call(Interpreter* interpreter, vector<pair<string, string>>& arguments) {
+    LoxInstance* instance = new LoxInstance(this);
+    string instanceId = "__instance_" + to_string(interpreter->nextInstanceId++);
+    interpreter->instances[instanceId] = instance;
+    
+    LoxFunction* initializer = findMethod("init");
+    if (initializer != nullptr) {
+        LoxFunction* bound = initializer->bind(instanceId, "instance", interpreter);
+        bound->call(interpreter, arguments);
+    }
+    
+    return {instanceId, "instance"};
+}
+
+pair<string, string> LoxInstance::get(const string& name) {
+    auto it = fields.find(name);
+    if (it != fields.end()) {
+        return it->second;
+    }
+    
+    LoxFunction* method = klass->findMethod(name);
+    if (method != nullptr) {
+        throw runtime_error("Method binding not yet implemented for '" + name + "'.");
+    }
+    
+    throw runtime_error("Undefined property '" + name + "'.");
 }
 
 class Parser {
@@ -1248,6 +1499,10 @@ class Parser {
             return new LiteralExpr(previous().literal, "string");
         }
         
+        if (match({"THIS"})) {
+            return new ThisExpr();
+        }
+        
         if (match({"IDENTIFIER"})) {
             return new VariableExpr(previous().lexeme);
         }
@@ -1290,7 +1545,11 @@ class Parser {
                 }
                 consume("RIGHT_PAREN", "Expect ')' after arguments.");
                 expr = new CallExpr(expr, arguments);
-            } 
+            }
+            else if (match({"DOT"})) {
+                tok name = consume("IDENTIFIER", "Expect property name after '.'.");
+                expr = new GetExpr(expr, name.lexeme);
+            }
             else {
                 break;
             }
@@ -1439,6 +1698,9 @@ class Parser {
             if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
                 return new AssignExpr(var->name, value);
             }
+            else if (auto* get = dynamic_cast<GetExpr*>(expr)) {
+                return new SetExpr(get->object, get->name, value);
+            }
             
             delete expr;
             error("Invalid assignment target.");
@@ -1584,6 +1846,7 @@ class Parser {
     
     Stmt* declaration() {
         try {
+            if (match({"CLASS"})) return classDeclaration();
             if (match({"FUN"})) return function("function");
             if (match({"VAR"})) return varDeclaration();
             return statement();
@@ -1592,6 +1855,19 @@ class Parser {
             synchronize();
             return nullptr;
         }
+    }
+    
+    Stmt* classDeclaration() {
+        tok name = consume("IDENTIFIER", "Expect class name.");
+        consume("LEFT_BRACE", "Expect '{' before class body.");
+        
+        vector<FunStmt*> methods;
+        while (!check("RIGHT_BRACE") && !isAtEnd()) {
+            methods.push_back((FunStmt*)function("method"));
+        }
+        
+        consume("RIGHT_BRACE", "Expect '}' after class body.");
+        return new ClassStmt(name.lexeme, methods);
     }
     
     Stmt* function(const string& kind) {
