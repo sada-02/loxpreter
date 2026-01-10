@@ -107,6 +107,8 @@ void handleTokenisation(string& file) {
                 else {
                     Tokens.push_back({upperCase(currWord),currWord,"null"});
                 }
+                
+                currWord = "";
             }
         }
         if(file[i] == '(') {
