@@ -664,7 +664,7 @@ private:
             }
             resolveLocal(var, var->name);
         }
-        else if (auto* assign = dynamic_cast<AssignmentExpr*>(expr)) {
+        else if (auto* assign = dynamic_cast<AssignExpr*>(expr)) {
             resolveExpr(assign->value);
             resolveLocal(assign, assign->name);
         }
@@ -675,7 +675,7 @@ private:
         else if (auto* unary = dynamic_cast<UnaryExpr*>(expr)) {
             resolveExpr(unary->right);
         }
-        else if (auto* group = dynamic_cast<GroupExpr*>(expr)) {
+        else if (auto* group = dynamic_cast<GroupingExpr*>(expr)) {
             resolveExpr(group->expression);
         }
         else if (auto* logical = dynamic_cast<LogicalExpr*>(expr)) {
@@ -691,7 +691,7 @@ private:
     }
     
     void resolveStmt(Stmt* stmt) {
-        if (auto* exprStmt = dynamic_cast<ExpressionStmt*>(stmt)) {
+        if (auto* exprStmt = dynamic_cast<ExprStmt*>(stmt)) {
             resolveExpr(exprStmt->expression);
         }
         else if (auto* printStmt = dynamic_cast<PrintStmt*>(stmt)) {
@@ -850,9 +850,11 @@ class Interpreter {
         auto it = locals.find(expr);
         if (it != locals.end()) {
             int distance = it->second;
-            return environment->getAt(distance, name);
+            auto result = environment->getAt(distance, name);
+            return {result.first, result.second};
         } else {
-            return globals->get(name);
+            auto result = globals->get(name);
+            return {result.first, result.second};
         }
     }
     
@@ -862,8 +864,7 @@ class Interpreter {
         }
         else if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
             try {
-                auto result = lookupVariable(var->name, var);
-                return {result.first, result.second};
+                return lookupVariable(var->name, var);
             }
              catch (const runtime_error& e) {
                 runtimeError(e.what());
