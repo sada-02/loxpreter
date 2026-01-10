@@ -592,8 +592,6 @@ class Interpreter {
     Environment* globals;
     map<string, LoxCallable*> functions;
     int nextFunctionId;
-    int nextFunctionId;
-    int nextFunctionId;
     
     void runtimeError(const string& message) {
         hadRuntimeError = true;
