@@ -1324,7 +1324,8 @@ class Interpreter {
         else if (auto* classStmt = dynamic_cast<ClassStmt*>(stmt)) {
             map<string, LoxFunction*> methods;
             for (FunStmt* method : classStmt->methods) {
-                LoxFunction* function = new LoxFunction(method, environment);
+                bool isInit = (method->name == "init");
+                LoxFunction* function = new LoxFunction(method, environment, isInit);
                 methods[method->name] = function;
             }
             
@@ -1380,7 +1381,14 @@ pair<string, string> LoxFunction::call(Interpreter* interpreter, vector<pair<str
     
     if (interpreter->isReturning) {
         interpreter->isReturning = false;
+        if (isInitializer) {
+            return closure->getAt(0, "this");
+        }
         return interpreter->returnValue;
+    }
+    
+    if (isInitializer) {
+        return closure->getAt(0, "this");
     }
     
     return {"nil", "nil"};
