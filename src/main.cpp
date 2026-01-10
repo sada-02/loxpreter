@@ -4,9 +4,26 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <iomanip>
 using namespace std;
 
 string read_file_contents(const string& filename);
+
+string formatNumber(const string& numStr) {
+    double value = stod(numStr);
+    ostringstream oss;
+    if(numStr.find('.') == string::npos) {
+        oss << value;
+        string result = oss.str();
+        if(result.find('.') == string::npos) {
+            result += ".0";
+        }
+        return result;
+    } 
+    else {
+        return numStr;
+    }
+}
 
 struct tok{
     string type;
@@ -46,15 +63,18 @@ void handleTokenisation(string& file) {
         if(insideNum) {
             if(file[i] <= '9' && file[i]>='0') {
                 currNum += file[i];
+                continue;
             } 
             else if(file[i] == '.' && !firstDec) {
                 currNum += file[i];
                 firstDec = true;
+                continue;
             }
             else {
-                Tokens.push_back({"NUMBER",currNum,to_string(stod(currNum))});
+                Tokens.push_back({"NUMBER",currNum,formatNumber(currNum)});
                 currNum = "";
                 insideNum = false;
+                firstDec = false;
             }
         }
         if(file[i] == '(') {
@@ -191,7 +211,7 @@ void handleTokenisation(string& file) {
         errors.push_back("[line "+ to_string(lineNo) +"] Error: Unterminated string.");
     }
     if(insideNum) {
-        Tokens.push_back({"NUMBER",currNum,to_string(stod(currNum))});
+        Tokens.push_back({"NUMBER",currNum,formatNumber(currNum)});
     }
     Tokens.push_back({"EOF","","null"});
 }
