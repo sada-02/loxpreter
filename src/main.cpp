@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <map>
 using namespace std;
 string read_file_contents(const string& filename);
 
@@ -333,10 +334,111 @@ struct GroupingExpr : Expr {
     }
 };
 
+struct VariableExpr : Expr {
+    string name;
+    
+    VariableExpr(string n) : name(n) {}
+    
+    string toString() override {
+        return name;
+    }
+};
+
+struct AssignExpr : Expr {
+    string name;
+    Expr* value;
+    
+    AssignExpr(string n, Expr* v) : name(n), value(v) {}
+    
+    ~AssignExpr() { delete value; }
+    
+    string toString() override {
+        return "(= " + name + " " + value->toString() + ")";
+    }
+};
+
+struct Stmt {
+    virtual ~Stmt() {}
+};
+
+struct ExprStmt : Stmt {
+    Expr* expression;
+    
+    ExprStmt(Expr* e) : expression(e) {}
+    
+    ~ExprStmt() { delete expression; }
+};
+
+struct PrintStmt : Stmt {
+    Expr* expression;
+    
+    PrintStmt(Expr* e) : expression(e) {}
+    
+    ~PrintStmt() { delete expression; }
+};
+
+struct VarStmt : Stmt {
+    string name;
+    Expr* initializer;
+    
+    VarStmt(string n, Expr* init) : name(n), initializer(init) {}
+    
+    ~VarStmt() { if (initializer) delete initializer; }
+};
+
+struct BlockStmt : Stmt {
+    vector<Stmt*> statements;
+    
+    BlockStmt(vector<Stmt*> stmts) : statements(stmts) {}
+    
+    ~BlockStmt() {
+        for (auto stmt : statements) {
+            delete stmt;
+        }
+    }
+};
+
+class Environment {
+    private:
+    map<string, pair<string, string>> values;
+    Environment* enclosing;
+    
+    public:
+    Environment() : enclosing(nullptr) {}
+    Environment(Environment* enc) : enclosing(enc) {}
+    
+    void define(const string& name, const string& value, const string& type) {
+        values[name] = {value, type};
+    }
+    
+    pair<string, string> get(const string& name) {
+        if (values.find(name) != values.end()) {
+            return values[name];
+        }
+        if (enclosing != nullptr) {
+            return enclosing->get(name);
+        }
+        throw runtime_error("Undefined variable '" + name + "'.");
+    }
+    
+    void assign(const string& name, const string& value, const string& type) {
+        if (values.find(name) != values.end()) {
+            values[name] = {value, type};
+            return;
+        }
+        if (enclosing != nullptr) {
+            enclosing->assign(name, value, type);
+            return;
+        }
+        throw runtime_error("Undefined variable '" + name + "'.");
+    }
+};
+
 class Interpreter {
     private:
     bool hadRuntimeError;
     string runtimeErrorMsg;
+    Environment* environment;
     
     void runtimeError(const string& message) {
         hadRuntimeError = true;
@@ -370,11 +472,40 @@ class Interpreter {
         string type; 
     };
     
-    Interpreter() : hadRuntimeError(false), runtimeErrorMsg("") {}
+    Interpreter() : hadRuntimeError(false), runtimeErrorMsg("") {
+        environment = new Environment();
+    }
+    
+    ~Interpreter() {
+        delete environment;
+    }
     
     Value evaluate(Expr* expr) {
         if (auto* lit = dynamic_cast<LiteralExpr*>(expr)) {
             return {lit->value, lit->type};
+        }
+        else if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
+            try {
+                auto result = environment->get(var->name);
+                return {result.first, result.second};
+            }
+             catch (const runtime_error& e) {
+                runtimeError(e.what());
+                return {"", "nil"};
+            }
+        }
+        else if (auto* assign = dynamic_cast<AssignExpr*>(expr)) {
+            Value value = evaluate(assign->value);
+            if (hadRuntimeError) return {"", "nil"};
+            
+            try {
+                environment->assign(assign->name, value.val, value.type);
+                return value;
+            }
+             catch (const runtime_error& e) {
+                runtimeError(e.what());
+                return {"", "nil"};
+            }
         }
         else if (auto* group = dynamic_cast<GroupingExpr*>(expr)) {
             return evaluate(group->expression);
@@ -460,6 +591,63 @@ class Interpreter {
         }
         
         return {"", "nil"};
+    }
+    
+    void execute(Stmt* stmt) {
+        if (auto* exprStmt = dynamic_cast<ExprStmt*>(stmt)) {
+            evaluate(exprStmt->expression);
+        }
+        else if (auto* printStmt = dynamic_cast<PrintStmt*>(stmt)) {
+            Value value = evaluate(printStmt->expression);
+            if (!hadRuntimeError) {
+                if (value.type == "number") {
+                    double num = stod(value.val);
+                    if (num == floor(num)) {
+                        cout << static_cast<long long>(num) << endl;
+                    } else {
+                        cout << num << endl;
+                    }
+                }
+                 else if (value.type == "string") {
+                    cout << value.val << endl;
+                }
+                 else {
+                    cout << value.val << endl;
+                }
+            }
+        }
+        else if (auto* varStmt = dynamic_cast<VarStmt*>(stmt)) {
+            Value value = {"nil", "nil"};
+            if (varStmt->initializer != nullptr) {
+                value = evaluate(varStmt->initializer);
+            }
+            if (!hadRuntimeError) {
+                environment->define(varStmt->name, value.val, value.type);
+            }
+        }
+        else if (auto* blockStmt = dynamic_cast<BlockStmt*>(stmt)) {
+            executeBlock(blockStmt->statements, new Environment(environment));
+        }
+    }
+    
+    void executeBlock(const vector<Stmt*>& statements, Environment* newEnv) {
+        Environment* previous = environment;
+        environment = newEnv;
+        
+        for (Stmt* stmt : statements) {
+            execute(stmt);
+            if (hadRuntimeError) break;
+        }
+        
+        environment = previous;
+        delete newEnv;
+    }
+    
+    void interpret(const vector<Stmt*>& statements) {
+        for (Stmt* stmt : statements) {
+            execute(stmt);
+            if (hadRuntimeError) break;
+        }
     }
     
     bool hasError() { return hadRuntimeError; }
@@ -572,6 +760,10 @@ class Parser {
         
         if (match({"STRING"})) {
             return new LiteralExpr(previous().literal, "string");
+        }
+        
+        if (match({"IDENTIFIER"})) {
+            return new VariableExpr(previous().lexeme);
         }
         
         if (match({"LEFT_PAREN"})) {
@@ -700,12 +892,82 @@ class Parser {
         return expr;
     }
     
+    Expr* assignmentExpr() {
+        Expr* expr = equalityExpr();
+        
+        if (match({"EQUAL"})) {
+            tok equals = previous();
+            Expr* value = assignmentExpr();
+            
+            if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
+                return new AssignExpr(var->name, value);
+            }
+            
+            delete expr;
+            error("Invalid assignment target.");
+        }
+        
+        return expr;
+    }
+    
     string expression() {
         return equality();
     }
     
     Expr* expressionExpr() {
-        return equalityExpr();
+        return assignmentExpr();
+    }
+    
+    Stmt* statement() {
+        if (match({"PRINT"})) return printStatement();
+        if (match({"LEFT_BRACE"})) return new BlockStmt(block());
+        return expressionStatement();
+    }
+    
+    Stmt* printStatement() {
+        Expr* value = expressionExpr();
+        consume("SEMICOLON", "Expect ';' after value.");
+        return new PrintStmt(value);
+    }
+    
+    Stmt* expressionStatement() {
+        Expr* expr = expressionExpr();
+        consume("SEMICOLON", "Expect ';' after expression.");
+        return new ExprStmt(expr);
+    }
+    
+    Stmt* varDeclaration() {
+        tok name = consume("IDENTIFIER", "Expect variable name.");
+        
+        Expr* initializer = nullptr;
+        if (match({"EQUAL"})) {
+            initializer = expressionExpr();
+        }
+        
+        consume("SEMICOLON", "Expect ';' after variable declaration.");
+        return new VarStmt(name.lexeme, initializer);
+    }
+    
+    vector<Stmt*> block() {
+        vector<Stmt*> statements;
+        
+        while (!check("RIGHT_BRACE") && !isAtEnd()) {
+            statements.push_back(declaration());
+        }
+        
+        consume("RIGHT_BRACE", "Expect '}' after block.");
+        return statements;
+    }
+    
+    Stmt* declaration() {
+        try {
+            if (match({"VAR"})) return varDeclaration();
+            return statement();
+        }
+         catch (...) {
+            synchronize();
+            return nullptr;
+        }
     }
     
     public:
@@ -714,7 +976,8 @@ class Parser {
     string parse() {
         try {
             return expression();
-        } catch (...) {
+        }
+         catch (...) {
             return "";
         }
     }
@@ -722,9 +985,21 @@ class Parser {
     Expr* parseExpr() {
         try {
             return expressionExpr();
-        } catch (...) {
+        }
+         catch (...) {
             return nullptr;
         }
+    }
+    
+    vector<Stmt*> parseProgram() {
+        vector<Stmt*> statements;
+        while (!isAtEnd()) {
+            Stmt* stmt = declaration();
+            if (stmt != nullptr) {
+                statements.push_back(stmt);
+            }
+        }
+        return statements;
     }
     
     bool hasError() {
@@ -849,6 +1124,56 @@ int main(int argc, char *argv[]) {
             }
             
             delete ast;
+        }
+    }
+    else if(command == "run") {
+        lineNo = 1;
+        string file = read_file_contents(argv[2]);
+        handleTokenisation(file);
+        
+        int errorCnt = 0;
+        for(auto& t : Tokens) {
+            if(t.type == "error") {
+                cerr<<errors[errorCnt]<<endl;
+                errorCnt++;
+                exitCode = 65;
+            }
+        }
+        
+        if (exitCode != 0) {
+            return exitCode;
+        }
+        
+        vector<tok> validTokens;
+        for(auto& t : Tokens) {
+            if(t.type != "error") {
+                validTokens.push_back(t);
+            }
+        }
+        
+        Parser parser(validTokens);
+        vector<Stmt*> statements = parser.parseProgram();
+        
+        if (parser.hasError()) {
+            cerr << parser.getError() << endl;
+            exitCode = 65;
+            
+            for (Stmt* stmt : statements) {
+                delete stmt;
+            }
+        } 
+        else {
+            Interpreter interpreter;
+            interpreter.interpret(statements);
+            
+            if (interpreter.hasError()) {
+                cerr << interpreter.getError() << endl;
+                exitCode = 70;
+            }
+            
+            for (Stmt* stmt : statements) {
+                delete stmt;
+            }
         }
     }
     else {
