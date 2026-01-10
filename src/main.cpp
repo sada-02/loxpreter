@@ -21,8 +21,9 @@ vector<string> errors;
 int lineNo ;
 
 void handleTokenisation(string& file) {
-    bool insideComment = false , insideString = false;
-    string currStr = "";
+    bool insideComment = false , insideString = false , insideNum = false;
+    string currStr = "" , currNum = "";
+    bool firstDec = false;
     for(int i=0 ;i<file.size() ;i++) {
         if(insideComment) {
             if(file[i] == '\n') {
@@ -41,6 +42,20 @@ void handleTokenisation(string& file) {
                 currStr += file[i];
             }
             continue;
+        }
+        if(insideNum) {
+            if(file[i] <= '9' && file[i]>='0') {
+                currNum += file[i];
+            } 
+            else if(file[i] == '.' && !firstDec) {
+                currNum += file[i];
+                firstDec = true;
+            }
+            else {
+                Tokens.push_back({"NUMBER",currNum,to_string(stod(currNum))});
+                currNum = "";
+                insideNum = false;
+            }
         }
         if(file[i] == '(') {
             Tokens.push_back({"LEFT_PAREN","(","null"});
@@ -77,6 +92,10 @@ void handleTokenisation(string& file) {
         }
         else if(file[i] == '\"') {
             insideString = true;
+        }
+        else if(file[i]>='0' && file[i]<='9') {
+            insideNum = true;
+            currNum += file[i];
         }
         else if(file[i] == '/') {
             bool flag = true;
