@@ -504,11 +504,13 @@ struct ReturnStmt : Stmt {
 
 struct ClassStmt : Stmt {
     string name;
+    VariableExpr* superclass;
     vector<FunStmt*> methods;
     
-    ClassStmt(string n, vector<FunStmt*> m) : name(n), methods(m) {}
+    ClassStmt(string n, VariableExpr* sc, vector<FunStmt*> m) : name(n), superclass(sc), methods(m) {}
     
     ~ClassStmt() {
+        if (superclass) delete superclass;
         for (auto method : methods) {
             delete method;
         }
@@ -550,6 +552,16 @@ struct ThisExpr : Expr {
     
     string toString() override {
         return "this";
+    }
+};
+
+struct SuperExpr : Expr {
+    string method;
+    
+    SuperExpr(string m) : method(m) {}
+    
+    string toString() override {
+        return "(super " + method + ")";
     }
 };
 
@@ -657,9 +669,10 @@ class LoxInstance;
 
 struct LoxClass : LoxCallable {
     string name;
+    LoxClass* superclass;
     map<string, LoxFunction*> methods;
     
-    LoxClass(string n, map<string, LoxFunction*> m) : name(n), methods(m) {}
+    LoxClass(string n, LoxClass* sc, map<string, LoxFunction*> m) : name(n), superclass(sc), methods(m) {}
     
     int arity() override {
         LoxFunction* initializer = findMethod("init");
@@ -674,6 +687,11 @@ struct LoxClass : LoxCallable {
         if (it != methods.end()) {
             return it->second;
         }
+        
+        if (superclass != nullptr) {
+            return superclass->findMethod(name);
+        }
+        
         return nullptr;
     }
     
@@ -718,7 +736,8 @@ private:
     
     enum ClassType {
         NONE_CLASS,
-        CLASS
+        CLASS,
+        SUBCLASS
     };
     
     FunctionType currentFunction;
@@ -815,6 +834,19 @@ private:
             }
             resolveLocal(thisExpr, "this");
         }
+        else if (auto* superExpr = dynamic_cast<SuperExpr*>(expr)) {
+            if (currentClass == NONE_CLASS) {
+                hadError = true;
+                errorMsg = "Can't use 'super' outside of a class.";
+                return;
+            }
+            if (currentClass != SUBCLASS) {
+                hadError = true;
+                errorMsg = "Can't use 'super' in a class with no superclass.";
+                return;
+            }
+            resolveLocal(superExpr, "super");
+        }
     }
     
     void resolveStmt(Stmt* stmt) {
@@ -875,6 +907,19 @@ private:
             declare(classStmt->name);
             define(classStmt->name);
             
+            if (classStmt->superclass != nullptr) {
+                currentClass = SUBCLASS;
+                if (classStmt->name == classStmt->superclass->name) {
+                    hadError = true;
+                    errorMsg = "A class can't inherit from itself.";
+                    return;
+                }
+                resolveExpr(classStmt->superclass);
+                
+                beginScope();
+                scopes.back()["super"] = true;
+            }
+            
             beginScope();
             scopes.back()["this"] = true;
             
@@ -901,6 +946,11 @@ private:
             }
             
             endScope();
+            
+            if (classStmt->superclass != nullptr) {
+                endScope();
+            }
+            
             currentClass = enclosingClass;
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
@@ -1552,6 +1602,12 @@ class Parser {
             return new ThisExpr();
         }
         
+        if (match({"SUPER"})) {
+            consume("DOT", "Expect '.' after 'super'.");
+            tok method = consume("IDENTIFIER", "Expect superclass method name.");
+            return new SuperExpr(method.lexeme);
+        }
+        
         if (match({"IDENTIFIER"})) {
             return new VariableExpr(previous().lexeme);
         }
@@ -1908,6 +1964,13 @@ class Parser {
     
     Stmt* classDeclaration() {
         tok name = consume("IDENTIFIER", "Expect class name.");
+        
+        VariableExpr* superclass = nullptr;
+        if (match({"LESS"})) {
+            consume("IDENTIFIER", "Expect superclass name.");
+            superclass = new VariableExpr(previous().lexeme);
+        }
+        
         consume("LEFT_BRACE", "Expect '{' before class body.");
         
         vector<FunStmt*> methods;
@@ -1916,7 +1979,7 @@ class Parser {
         }
         
         consume("RIGHT_BRACE", "Expect '}' after class body.");
-        return new ClassStmt(name.lexeme, methods);
+        return new ClassStmt(name.lexeme, superclass, methods);
     }
     
     Stmt* function(const string& kind) {
