@@ -86,7 +86,8 @@ void handleTokenisation(string& file) {
             }
         }
         if(insideWord) {
-            if((file[i]>='a' && file[i]<='z') || (file[i]>='A' && file[i]<='Z') || file[i]=='_' || (file[i]>='0' && file[i]<='9')) {
+            if((file[i]>='a' && file[i]<='z') || (file[i]>='A' && file[i]<='Z') || file[i]=='_' || 
+            (file[i]>='0' && file[i]<='9')) {
                 currWord += file[i];
                 continue;
             }
@@ -107,7 +108,7 @@ void handleTokenisation(string& file) {
                 else {
                     Tokens.push_back({upperCase(currWord),currWord,"null"});
                 }
-                
+
                 currWord = "";
             }
         }
@@ -234,7 +235,7 @@ void handleTokenisation(string& file) {
         else if(file[i] == '\n') {
             lineNo++;
         }
-        else if(file[i]<='z' || file[i]>='a' || file[i]=='_') {
+        else if((file[i]<='z' && file[i]>='a') || (file[i]<='Z' && file[i]>='A') || file[i]=='_') {
             currWord += file[i];
             insideWord = true;
         }
