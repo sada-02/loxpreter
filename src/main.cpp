@@ -852,7 +852,7 @@ class Interpreter {
         else if (auto* funStmt = dynamic_cast<FunStmt*>(stmt)) {
             LoxFunction* function = new LoxFunction(funStmt, environment);
             functions[funStmt->name] = function;
-            environment->define(funStmt->name, funStmt->name, "function");
+            environment->define(funStmt->name, function->toString(), "function");
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (returnStmt->value != nullptr) {
