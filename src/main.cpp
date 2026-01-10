@@ -313,7 +313,12 @@ int main(int argc, char *argv[]) {
         handleTokenisation(file);
 
         for(int i=0 ;i<Tokens.size() ;i++) {
-            cout<<Tokens[i].lexeme<<endl;
+            if(Tokens[i].type == "NUMBER") {
+                cout<<Tokens[i].literal<<endl;
+            }
+            else {
+                cout<<Tokens[i].lexeme<<endl;
+            }
         }
     }
     else {
