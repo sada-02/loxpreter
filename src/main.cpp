@@ -813,7 +813,12 @@ class Interpreter {
                     cout << value.val << endl;
                 }
                  else if (value.type == "function") {
-                    cout << "<fn " << value.val << ">" << endl;
+                    LoxCallable* func = functions[value.val];
+                    if (func != nullptr) {
+                        cout << func->toString() << endl;
+                    } else {
+                        cout << value.val << endl;
+                    }
                 }
                  else {
                     cout << value.val << endl;
@@ -881,7 +886,6 @@ class Interpreter {
         }
         
         environment = previous;
-        delete newEnv;
     }
     
     void interpret(const vector<Stmt*>& statements) {
