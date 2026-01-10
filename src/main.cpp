@@ -35,6 +35,7 @@ void handleTokenisation(string& file) {
             if(file[i] == '\"') {
                 insideString = false;
                 Tokens.push_back({"STRING","\""+currStr+"\"",currStr});
+                currStr = "";
             }
             else {
                 currStr += file[i];
@@ -165,7 +166,7 @@ void handleTokenisation(string& file) {
             errors.push_back("[line " + to_string(lineNo) + "] Error: Unexpected character: "+file[i]);
         }
     }
-    
+
     if(insideString) {
         Tokens.push_back({"error","",""});
         errors.push_back("[line "+ to_string(lineNo) +"] Error: Unterminated string.");
