@@ -1006,6 +1006,20 @@ class Interpreter {
         locals = resolvedLocals;
     }
     
+    string createInstance(LoxInstance* instance) {
+        string instanceId = "__instance_" + to_string(nextInstanceId++);
+        instances[instanceId] = instance;
+        return instanceId;
+    }
+    
+    LoxInstance* getInstance(const string& instanceId) {
+        auto it = instances.find(instanceId);
+        if (it != instances.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+    
     Value lookupVariable(const string& name, Expr* expr) {
         auto it = locals.find(expr);
         if (it != locals.end()) {
@@ -1365,8 +1379,7 @@ LoxFunction* LoxFunction::bind(const string& instanceId, const string& instanceT
 
 pair<string, string> LoxClass::call(Interpreter* interpreter, vector<pair<string, string>>& arguments) {
     LoxInstance* instance = new LoxInstance(this);
-    string instanceId = "__instance_" + to_string(interpreter->nextInstanceId++);
-    interpreter->instances[instanceId] = instance;
+    string instanceId = interpreter->createInstance(instance);
     
     LoxFunction* initializer = findMethod("init");
     if (initializer != nullptr) {
