@@ -249,6 +249,24 @@ void handleTokenisation(string& file) {
     if(insideNum) {
         Tokens.push_back({"NUMBER",currNum,formatNumber(currNum)});
     }
+    if(insideWord) {
+        insideWord = false;
+        bool flag = true;
+
+        for(string& temp : reservedWord) {
+            if(temp == currWord) {
+                flag = false;
+                break;
+            }
+        }
+
+        if(flag) {
+            Tokens.push_back({"IDENTIFIER",currWord,"null"});
+        }
+        else {
+            Tokens.push_back({upperCase(currWord),currWord,"null"});
+        }
+    }
     Tokens.push_back({"EOF","","null"});
 }
 
