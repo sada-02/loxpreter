@@ -811,6 +811,9 @@ class Interpreter {
                  else if (value.type == "string") {
                     cout << value.val << endl;
                 }
+                 else if (value.type == "function") {
+                    cout << "<fn " << value.val << ">" << endl;
+                }
                  else {
                     cout << value.val << endl;
                 }
@@ -852,7 +855,7 @@ class Interpreter {
         else if (auto* funStmt = dynamic_cast<FunStmt*>(stmt)) {
             LoxFunction* function = new LoxFunction(funStmt, environment);
             functions[funStmt->name] = function;
-            environment->define(funStmt->name, function->toString(), "function");
+            environment->define(funStmt->name, funStmt->name, "function");
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (returnStmt->value != nullptr) {
