@@ -21,12 +21,23 @@ vector<string> errors;
 int lineNo ;
 
 void handleTokenisation(string& file) {
-    bool insideComment = false;
+    bool insideComment = false , insideString = false;
+    string currStr = "";
     for(int i=0 ;i<file.size() ;i++) {
         if(insideComment) {
             if(file[i] == '\n') {
                 insideComment = false;
                 lineNo++;
+            }
+            continue;
+        }
+        if(insideString) {
+            if(file[i] == '\"') {
+                insideString = false;
+                Tokens.push_back({"STRING","\""+currStr+"\"",currStr});
+            }
+            else {
+                currStr += file[i];
             }
             continue;
         }
@@ -62,6 +73,9 @@ void handleTokenisation(string& file) {
         }
         else if(file[i] == '\t'|| file[i] == ' ') {
             continue;
+        }
+        else if(file[i] == '\"') {
+            insideString = true;
         }
         else if(file[i] == '/') {
             bool flag = true;
@@ -151,7 +165,11 @@ void handleTokenisation(string& file) {
             errors.push_back("[line " + to_string(lineNo) + "] Error: Unexpected character: "+file[i]);
         }
     }
-
+    
+    if(insideString) {
+        Tokens.push_back({"error","",""});
+        errors.push_back("[line "+ to_string(lineNo) +"] Error: Unterminated string.");
+    }
     Tokens.push_back({"EOF","","null"});
 }
 
