@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <algorithm>
 using namespace std;
 
 string read_file_contents(const string& filename);
@@ -34,12 +35,20 @@ struct tok{
 
 vector<tok> Tokens;
 vector<string> errors;
+vector<string> reservedWord = {"and","class","else","false","for","fun","if","nil","or","print",
+    "return","super","this","true","var","while"};
 int lineNo ;
 
+string upperCase(string str) {
+    transform(str.begin(), str.end(), str.begin(), [](unsigned char c){ return std::toupper(c); });
+    return str;
+}
+
 void handleTokenisation(string& file) {
-    bool insideComment = false , insideString = false , insideNum = false;
-    string currStr = "" , currNum = "";
+    bool insideComment = false , insideString = false , insideNum = false , insideWord = false;
+    string currStr = "" , currNum = "" , currWord = "";
     bool firstDec = false;
+
     for(int i=0 ;i<file.size() ;i++) {
         if(insideComment) {
             if(file[i] == '\n') {
@@ -74,6 +83,30 @@ void handleTokenisation(string& file) {
                 currNum = "";
                 insideNum = false;
                 firstDec = false;
+            }
+        }
+        if(insideWord) {
+            if((file[i]>='a' && file[i]<='z') || (file[i]>='A' && file[i]<='Z') || file[i]=='_' || (file[i]>='0' && file[i]<='9')) {
+                currWord += file[i];
+                continue;
+            }
+            else {
+                insideWord = false;
+                bool flag = true;
+
+                for(string& temp : reservedWord) {
+                    if(temp == currWord) {
+                        flag = false;
+                        break;
+                    }
+                }
+
+                if(flag) {
+                    Tokens.push_back({"IDENTIFIER",currWord,"null"});
+                }
+                else {
+                    Tokens.push_back({upperCase(currWord),currWord,"null"});
+                }
             }
         }
         if(file[i] == '(') {
@@ -198,6 +231,10 @@ void handleTokenisation(string& file) {
         }
         else if(file[i] == '\n') {
             lineNo++;
+        }
+        else if(file[i]<='z' || file[i]>='a' || file[i]=='_') {
+            currWord += file[i];
+            insideWord = true;
         }
         else {
             Tokens.push_back({"error","",""});
