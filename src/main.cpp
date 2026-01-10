@@ -273,9 +273,134 @@ void handleTokenisation(string& file) {
     Tokens.push_back({"EOF","","null"});
 }
 
-void handleParse(string& file) {
-
-}
+class Parser {
+    private:
+    vector<tok>& tokens;
+    int curr;
+    
+    tok peek() {
+        return tokens[curr];
+    }
+    
+    tok previous() {
+        return tokens[curr - 1];
+    }
+    
+    bool isAtEnd() {
+        return peek().type == "EOF";
+    }
+    
+    tok advance() {
+        if (!isAtEnd()) curr++;
+        return previous();
+    }
+    
+    bool check(const string& type) {
+        if (isAtEnd()) return false;
+        return peek().type == type;
+    }
+    
+    bool match(const vector<string>& types) {
+        for (const string& type : types) {
+            if (check(type)) {
+                advance();
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    string primary() {
+        if (match({"FALSE"})) return "false";
+        if (match({"TRUE"})) return "true";
+        if (match({"NIL"})) return "nil";
+        
+        if (match({"NUMBER"})) {
+            return previous().literal;
+        }
+        
+        if (match({"STRING"})) {
+            return previous().literal;
+        }
+        
+        if (match({"LEFT_PAREN"})) {
+            string expr = expression();
+            advance(); 
+            return "(group " + expr + ")";
+        }
+        
+        return "";
+    }
+    
+    string unary() {
+        if (match({"BANG", "MINUS"})) {
+            string op = previous().lexeme;
+            string right = unary();
+            return "(" + op + " " + right + ")";
+        }
+        
+        return primary();
+    }
+    
+    string factor() {
+        string expr = unary();
+        
+        while (match({"SLASH", "STAR"})) {
+            string op = previous().lexeme;
+            string right = unary();
+            expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    string term() {
+        string expr = factor();
+        
+        while (match({"MINUS", "PLUS"})) {
+            string op = previous().lexeme;
+            string right = factor();
+            expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    string comparison() {
+        string expr = term();
+        
+        while (match({"GREATER", "GREATER_EQUAL", "LESS", "LESS_EQUAL"})) {
+            string op = previous().lexeme;
+            string right = term();
+            expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    string equality() {
+        string expr = comparison();
+        
+        while (match({"BANG_EQUAL", "EQUAL_EQUAL"})) {
+            string op = previous().lexeme;
+            string right = comparison();
+            expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    string expression() {
+        return equality();
+    }
+    
+    public:
+    Parser(vector<tok>& tokens) : tokens(tokens), curr(0) {}
+    
+    string parse() {
+        return expression();
+    }
+};
 
 int main(int argc, char *argv[]) {
     cout << unitbuf;
@@ -311,15 +436,17 @@ int main(int argc, char *argv[]) {
         lineNo = 1;
         string file = read_file_contents(argv[2]);
         handleTokenisation(file);
-
-        for(int i=0 ;i<Tokens.size() ;i++) {
-            if(Tokens[i].type == "NUMBER" || Tokens[i].type == "STRING") {
-                cout<<Tokens[i].literal<<endl;
-            }
-            else {
-                cout<<Tokens[i].lexeme<<endl;
+        
+        vector<tok> validTokens;
+        for(auto& t : Tokens) {
+            if(t.type != "error") {
+                validTokens.push_back(t);
             }
         }
+        
+        Parser parser(validTokens);
+        string result = parser.parse();
+        cout << result << endl;
     }
     else {
         cerr << "Unknown command: " << command << endl;
