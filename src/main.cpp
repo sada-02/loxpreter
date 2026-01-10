@@ -6,8 +6,8 @@
 #include <vector>
 #include <iomanip>
 #include <algorithm>
+#include <cmath>
 using namespace std;
-//
 string read_file_contents(const string& filename);
 
 string formatNumber(const string& numStr) {
@@ -827,13 +827,11 @@ int main(int argc, char *argv[]) {
             else {
                 if (result.type == "number") {
                     double num = stod(result.val);
-                    ostringstream oss;
-                    oss << num;
-                    string formatted = oss.str();
-                    if (formatted.find('.') == string::npos) {
-                        formatted += ".0";
+                    if (num == floor(num)) {
+                        cout << static_cast<long long>(num) << endl;
+                    } else {
+                        cout << num << endl;
                     }
-                    cout << formatted << endl;
                 } 
                 else if (result.type == "string") {
                     cout << result.val << endl;
