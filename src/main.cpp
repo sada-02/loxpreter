@@ -849,6 +849,7 @@ class Parser {
         }
         
         error("Expect expression.");
+        advance();  
         return new LiteralExpr("nil", "nil");
     }
     
