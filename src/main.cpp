@@ -566,11 +566,10 @@ struct SuperExpr : Expr {
 };
 
 class Environment {
-    private:
+    public:
     map<string, pair<string, string>> values;
     Environment* enclosing;
     
-    public:
     Environment() : enclosing(nullptr) {}
     Environment(Environment* enc) : enclosing(enc) {}
     
