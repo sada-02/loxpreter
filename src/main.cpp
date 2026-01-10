@@ -273,6 +273,192 @@ void handleTokenisation(string& file) {
     Tokens.push_back({"EOF","","null"});
 }
 
+struct Expr {
+    virtual ~Expr() {}
+    virtual string toString() = 0;
+};
+
+struct LiteralExpr : Expr {
+    string value;
+    string type; 
+    
+    LiteralExpr(string v, string t) : value(v), type(t) {}
+    
+    string toString() override {
+        if (type == "nil") return "nil";
+        if (type == "boolean") return value;
+        return value;
+    }
+};
+
+struct UnaryExpr : Expr {
+    string op;
+    Expr* right;
+    
+    UnaryExpr(string o, Expr* r) : op(o), right(r) {}
+    
+    ~UnaryExpr() { delete right; }
+    
+    string toString() override {
+        return "(" + op + " " + right->toString() + ")";
+    }
+};
+
+struct BinaryExpr : Expr {
+    Expr* left;
+    string op;
+    Expr* right;
+    
+    BinaryExpr(Expr* l, string o, Expr* r) : left(l), op(o), right(r) {}
+    
+    ~BinaryExpr() { 
+        delete left; 
+        delete right; 
+    }
+    
+    string toString() override {
+        return "(" + op + " " + left->toString() + " " + right->toString() + ")";
+    }
+};
+
+struct GroupingExpr : Expr {
+    Expr* expression;
+    
+    GroupingExpr(Expr* e) : expression(e) {}
+    
+    ~GroupingExpr() { delete expression; }
+    
+    string toString() override {
+        return "(group " + expression->toString() + ")";
+    }
+};
+
+class Interpreter {
+    private:
+    bool hadRuntimeError;
+    string runtimeErrorMsg;
+    
+    void runtimeError(const string& message) {
+        hadRuntimeError = true;
+        runtimeErrorMsg = message;
+    }
+    
+    bool isTruthy(const string& value, const string& type) {
+        if (type == "nil") return false;
+        if (type == "boolean") return value == "true";
+        return true;
+    }
+    
+    bool isEqual(const string& left, const string& leftType, 
+                 const string& right, const string& rightType) {
+        if (leftType == "nil" && rightType == "nil") return true;
+        if (leftType == "nil" || rightType == "nil") return false;
+        if (leftType != rightType) return false;
+        return left == right;
+    }
+    
+    public:
+    struct Value {
+        string val;
+        string type; 
+    };
+    
+    Interpreter() : hadRuntimeError(false), runtimeErrorMsg("") {}
+    
+    Value evaluate(Expr* expr) {
+        if (auto* lit = dynamic_cast<LiteralExpr*>(expr)) {
+            return {lit->value, lit->type};
+        }
+        else if (auto* group = dynamic_cast<GroupingExpr*>(expr)) {
+            return evaluate(group->expression);
+        }
+        else if (auto* unary = dynamic_cast<UnaryExpr*>(expr)) {
+            Value right = evaluate(unary->right);
+            
+            if (unary->op == "-") {
+                if (right.type != "number") {
+                    runtimeError("Operand must be a number.");
+                    return {"", "nil"};
+                }
+                double num = stod(right.val);
+                return {to_string(-num), "number"};
+            }
+            else if (unary->op == "!") {
+                bool truthiness = isTruthy(right.val, right.type);
+                return {truthiness ? "false" : "true", "boolean"};
+            }
+        }
+        else if (auto* binary = dynamic_cast<BinaryExpr*>(expr)) {
+            Value left = evaluate(binary->left);
+            Value right = evaluate(binary->right);
+            
+            if (binary->op == "-" || binary->op == "/" || binary->op == "*") {
+                if (left.type != "number" || right.type != "number") {
+                    runtimeError("Operands must be numbers.");
+                    return {"", "nil"};
+                }
+                double leftNum = stod(left.val);
+                double rightNum = stod(right.val);
+                double result;
+                
+                if (binary->op == "-") result = leftNum - rightNum;
+                else if (binary->op == "*") result = leftNum * rightNum;
+                else { 
+                    if (rightNum == 0) {
+                        runtimeError("Division by zero.");
+                        return {"", "nil"};
+                    }
+                    result = leftNum / rightNum;
+                }
+                return {to_string(result), "number"};
+            }
+            else if (binary->op == "+") {
+                if (left.type == "number" && right.type == "number") {
+                    double result = stod(left.val) + stod(right.val);
+                    return {to_string(result), "number"};
+                }
+                else if (left.type == "string" && right.type == "string") {
+                    return {left.val + right.val, "string"};
+                }
+                else {
+                    runtimeError("Operands must be two numbers or two strings.");
+                    return {"", "nil"};
+                }
+            }
+            else if (binary->op == ">" || binary->op == ">=" || 
+                     binary->op == "<" || binary->op == "<=") {
+                if (left.type != "number" || right.type != "number") {
+                    runtimeError("Operands must be numbers.");
+                    return {"", "nil"};
+                }
+                double leftNum = stod(left.val);
+                double rightNum = stod(right.val);
+                bool result;
+                
+                if (binary->op == ">") result = leftNum > rightNum;
+                else if (binary->op == ">=") result = leftNum >= rightNum;
+                else if (binary->op == "<") result = leftNum < rightNum;
+                else result = leftNum <= rightNum;
+                
+                return {result ? "true" : "false", "boolean"};
+            }
+            else if (binary->op == "==") {
+                bool result = isEqual(left.val, left.type, right.val, right.type);
+                return {result ? "true" : "false", "boolean"};
+            }
+            else if (binary->op == "!=") {
+                bool result = !isEqual(left.val, left.type, right.val, right.type);
+                return {result ? "true" : "false", "boolean"};
+            }
+        }
+        
+        return {"", "nil"};
+    }
+    
+    bool hasError() { return hadRuntimeError; }
+    string getError() { return runtimeErrorMsg; }
+};
+
 class Parser {
     private:
     vector<tok>& tokens;
@@ -368,6 +554,29 @@ class Parser {
         return "";
     }
     
+    Expr* primaryExpr() {
+        if (match({"FALSE"})) return new LiteralExpr("false", "boolean");
+        if (match({"TRUE"})) return new LiteralExpr("true", "boolean");
+        if (match({"NIL"})) return new LiteralExpr("nil", "nil");
+        
+        if (match({"NUMBER"})) {
+            return new LiteralExpr(previous().literal, "number");
+        }
+        
+        if (match({"STRING"})) {
+            return new LiteralExpr(previous().literal, "string");
+        }
+        
+        if (match({"LEFT_PAREN"})) {
+            Expr* expr = expressionExpr();
+            consume("RIGHT_PAREN", "Expect ')' after expression.");
+            return new GroupingExpr(expr);
+        }
+        
+        error("Expect expression.");
+        return new LiteralExpr("nil", "nil");
+    }
+    
     string unary() {
         if (match({"BANG", "MINUS"})) {
             string op = previous().lexeme;
@@ -378,6 +587,16 @@ class Parser {
         return primary();
     }
     
+    Expr* unaryExpr() {
+        if (match({"BANG", "MINUS"})) {
+            string op = previous().lexeme;
+            Expr* right = unaryExpr();
+            return new UnaryExpr(op, right);
+        }
+        
+        return primaryExpr();
+    }
+    
     string factor() {
         string expr = unary();
         
@@ -385,6 +604,18 @@ class Parser {
             string op = previous().lexeme;
             string right = unary();
             expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    Expr* factorExpr() {
+        Expr* expr = unaryExpr();
+        
+        while (match({"SLASH", "STAR"})) {
+            string op = previous().lexeme;
+            Expr* right = unaryExpr();
+            expr = new BinaryExpr(expr, op, right);
         }
         
         return expr;
@@ -402,6 +633,18 @@ class Parser {
         return expr;
     }
     
+    Expr* termExpr() {
+        Expr* expr = factorExpr();
+        
+        while (match({"MINUS", "PLUS"})) {
+            string op = previous().lexeme;
+            Expr* right = factorExpr();
+            expr = new BinaryExpr(expr, op, right);
+        }
+        
+        return expr;
+    }
+    
     string comparison() {
         string expr = term();
         
@@ -409,6 +652,18 @@ class Parser {
             string op = previous().lexeme;
             string right = term();
             expr = "(" + op + " " + expr + " " + right + ")";
+        }
+        
+        return expr;
+    }
+    
+    Expr* comparisonExpr() {
+        Expr* expr = termExpr();
+        
+        while (match({"GREATER", "GREATER_EQUAL", "LESS", "LESS_EQUAL"})) {
+            string op = previous().lexeme;
+            Expr* right = termExpr();
+            expr = new BinaryExpr(expr, op, right);
         }
         
         return expr;
@@ -426,8 +681,24 @@ class Parser {
         return expr;
     }
     
+    Expr* equalityExpr() {
+        Expr* expr = comparisonExpr();
+        
+        while (match({"BANG_EQUAL", "EQUAL_EQUAL"})) {
+            string op = previous().lexeme;
+            Expr* right = comparisonExpr();
+            expr = new BinaryExpr(expr, op, right);
+        }
+        
+        return expr;
+    }
+    
     string expression() {
         return equality();
+    }
+    
+    Expr* expressionExpr() {
+        return equalityExpr();
     }
     
     public:
@@ -438,6 +709,14 @@ class Parser {
             return expression();
         } catch (...) {
             return "";
+        }
+    }
+    
+    Expr* parseExpr() {
+        try {
+            return expressionExpr();
+        } catch (...) {
+            return nullptr;
         }
     }
     
@@ -501,6 +780,70 @@ int main(int argc, char *argv[]) {
         } 
         else {
             cout << result << endl;
+        }
+    }
+    else if(command == "evaluate") {
+        lineNo = 1;
+        string file = read_file_contents(argv[2]);
+        handleTokenisation(file);
+        
+        int errorCnt = 0;
+        for(auto& t : Tokens) {
+            if(t.type == "error") {
+                cerr<<errors[errorCnt]<<endl;
+                errorCnt++;
+                exitCode = 65;
+            }
+        }
+        
+        if (exitCode != 0) {
+            return exitCode;
+        }
+        
+        vector<tok> validTokens;
+        for(auto& t : Tokens) {
+            if(t.type != "error") {
+                validTokens.push_back(t);
+            }
+        }
+        
+        Parser parser(validTokens);
+        Expr* ast = parser.parseExpr();
+        
+        if (parser.hasError()) {
+            cerr << parser.getError() << endl;
+            exitCode = 65;
+
+            if (ast) delete ast;
+        } 
+        else if (ast) {
+            Interpreter interpreter;
+            Interpreter::Value result = interpreter.evaluate(ast);
+            
+            if (interpreter.hasError()) {
+                cerr << interpreter.getError() << endl;
+                exitCode = 70;
+            } 
+            else {
+                if (result.type == "number") {
+                    double num = stod(result.val);
+                    ostringstream oss;
+                    oss << num;
+                    string formatted = oss.str();
+                    if (formatted.find('.') == string::npos) {
+                        formatted += ".0";
+                    }
+                    cout << formatted << endl;
+                } 
+                else if (result.type == "string") {
+                    cout << result.val << endl;
+                } 
+                else {
+                    cout << result.val << endl;
+                }
+            }
+            
+            delete ast;
         }
     }
     else {
