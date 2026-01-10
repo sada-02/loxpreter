@@ -536,6 +536,24 @@ class Environment {
         }
         throw runtime_error("Undefined variable '" + name + "'.");
     }
+    
+    Environment* ancestor(int distance) {
+        Environment* environment = this;
+        for (int i = 0; i < distance; i++) {
+            if (environment) {
+                environment = environment->enclosing;
+            }
+        }
+        return environment;
+    }
+    
+    pair<string, string> getAt(int distance, const string& name) {
+        return ancestor(distance)->values[name];
+    }
+    
+    void assignAt(int distance, const string& name, const string& value, const string& type) {
+        ancestor(distance)->values[name] = {value, type};
+    }
 };
 
 class Interpreter;
@@ -580,6 +598,188 @@ struct ClockNative : LoxCallable {
     }
 };
 
+class Resolver {
+private:
+    vector<map<string, bool>> scopes;
+    bool hadError;
+    string errorMsg;
+    map<Expr*, int> locals;
+    
+    enum FunctionType {
+        NONE,
+        FUNCTION
+    };
+    
+    FunctionType currentFunction;
+    
+    void beginScope() {
+        scopes.push_back(map<string, bool>());
+    }
+    
+    void endScope() {
+        if (!scopes.empty()) {
+            scopes.pop_back();
+        }
+    }
+    
+    void declare(const string& name) {
+        if (scopes.empty()) return;
+        
+        auto& scope = scopes.back();
+        if (scope.find(name) != scope.end()) {
+            hadError = true;
+            errorMsg = "Already a variable with this name in this scope.";
+            return;
+        }
+        
+        scope[name] = false;
+    }
+    
+    void define(const string& name) {
+        if (scopes.empty()) return;
+        scopes.back()[name] = true;
+    }
+    
+    void resolveLocal(Expr* expr, const string& name) {
+        for (int i = scopes.size() - 1; i >= 0; i--) {
+            if (scopes[i].find(name) != scopes[i].end()) {
+                locals[expr] = scopes.size() - 1 - i;
+                return;
+            }
+        }
+    }
+    
+    void resolveExpr(Expr* expr) {
+        if (auto* lit = dynamic_cast<LiteralExpr*>(expr)) {
+            
+        }
+        else if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
+            if (!scopes.empty()) {
+                auto& scope = scopes.back();
+                if (scope.find(var->name) != scope.end() && scope[var->name] == false) {
+                    hadError = true;
+                    errorMsg = "Can't read local variable in its own initializer.";
+                    return;
+                }
+            }
+            resolveLocal(var, var->name);
+        }
+        else if (auto* assign = dynamic_cast<AssignmentExpr*>(expr)) {
+            resolveExpr(assign->value);
+            resolveLocal(assign, assign->name);
+        }
+        else if (auto* binary = dynamic_cast<BinaryExpr*>(expr)) {
+            resolveExpr(binary->left);
+            resolveExpr(binary->right);
+        }
+        else if (auto* unary = dynamic_cast<UnaryExpr*>(expr)) {
+            resolveExpr(unary->right);
+        }
+        else if (auto* group = dynamic_cast<GroupExpr*>(expr)) {
+            resolveExpr(group->expression);
+        }
+        else if (auto* logical = dynamic_cast<LogicalExpr*>(expr)) {
+            resolveExpr(logical->left);
+            resolveExpr(logical->right);
+        }
+        else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+            resolveExpr(call->callee);
+            for (Expr* arg : call->arguments) {
+                resolveExpr(arg);
+            }
+        }
+    }
+    
+    void resolveStmt(Stmt* stmt) {
+        if (auto* exprStmt = dynamic_cast<ExpressionStmt*>(stmt)) {
+            resolveExpr(exprStmt->expression);
+        }
+        else if (auto* printStmt = dynamic_cast<PrintStmt*>(stmt)) {
+            resolveExpr(printStmt->expression);
+        }
+        else if (auto* varStmt = dynamic_cast<VarStmt*>(stmt)) {
+            declare(varStmt->name);
+            if (varStmt->initializer != nullptr) {
+                resolveExpr(varStmt->initializer);
+            }
+            define(varStmt->name);
+        }
+        else if (auto* blockStmt = dynamic_cast<BlockStmt*>(stmt)) {
+            beginScope();
+            for (Stmt* s : blockStmt->statements) {
+                resolveStmt(s);
+            }
+            endScope();
+        }
+        else if (auto* ifStmt = dynamic_cast<IfStmt*>(stmt)) {
+            resolveExpr(ifStmt->condition);
+            resolveStmt(ifStmt->thenBranch);
+            if (ifStmt->elseBranch != nullptr) {
+                resolveStmt(ifStmt->elseBranch);
+            }
+        }
+        else if (auto* whileStmt = dynamic_cast<WhileStmt*>(stmt)) {
+            resolveExpr(whileStmt->condition);
+            resolveStmt(whileStmt->body);
+        }
+        else if (auto* funStmt = dynamic_cast<FunStmt*>(stmt)) {
+            declare(funStmt->name);
+            define(funStmt->name);
+            
+            FunctionType enclosingFunction = currentFunction;
+            currentFunction = FUNCTION;
+            
+            beginScope();
+            for (const string& param : funStmt->params) {
+                declare(param);
+                define(param);
+            }
+            for (Stmt* bodyStmt : funStmt->body) {
+                resolveStmt(bodyStmt);
+            }
+            endScope();
+            
+            currentFunction = enclosingFunction;
+        }
+        else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
+            if (currentFunction == NONE) {
+                hadError = true;
+                errorMsg = "Can't return from top-level code.";
+                return;
+            }
+            
+            if (returnStmt->value != nullptr) {
+                resolveExpr(returnStmt->value);
+            }
+        }
+    }
+    
+    public:
+    Resolver() : hadError(false), currentFunction(NONE) {}
+    
+    void resolve(const vector<Stmt*>& statements) {
+        for (Stmt* stmt : statements) {
+            resolveStmt(stmt);
+            if (hadError) return;
+        }
+    }
+    
+    bool hasError() const { return hadError; }
+    string getError() const { return errorMsg; }
+    
+    int getDepth(Expr* expr) {
+        auto it = locals.find(expr);
+        if (it != locals.end()) {
+            return it->second;
+        }
+        return -1; 
+    }
+    
+    const map<Expr*, int>& getLocals() const {
+        return locals;
+    }
+};
+
 class Interpreter {
     public:
     bool isReturning;
@@ -592,6 +792,7 @@ class Interpreter {
     Environment* globals;
     map<string, LoxCallable*> functions;
     int nextFunctionId;
+    map<Expr*, int> locals;
     
     void runtimeError(const string& message) {
         hadRuntimeError = true;
@@ -641,13 +842,27 @@ class Interpreter {
         }
     }
     
+    void setLocals(const map<Expr*, int>& resolvedLocals) {
+        locals = resolvedLocals;
+    }
+    
+    Value lookupVariable(const string& name, Expr* expr) {
+        auto it = locals.find(expr);
+        if (it != locals.end()) {
+            int distance = it->second;
+            return environment->getAt(distance, name);
+        } else {
+            return globals->get(name);
+        }
+    }
+    
     Value evaluate(Expr* expr) {
         if (auto* lit = dynamic_cast<LiteralExpr*>(expr)) {
             return {lit->value, lit->type};
         }
         else if (auto* var = dynamic_cast<VariableExpr*>(expr)) {
             try {
-                auto result = environment->get(var->name);
+                auto result = lookupVariable(var->name, var);
                 return {result.first, result.second};
             }
              catch (const runtime_error& e) {
@@ -660,7 +875,14 @@ class Interpreter {
             if (hadRuntimeError) return {"", "nil"};
             
             try {
-                environment->assign(assign->name, value.val, value.type);
+                auto it = locals.find(assign);
+                if (it != locals.end()) {
+                    int distance = it->second;
+                    environment->assignAt(distance, assign->name, value.val, value.type);
+                } 
+                else {
+                    globals->assign(assign->name, value.val, value.type);
+                }
                 return value;
             }
              catch (const runtime_error& e) {
@@ -1585,12 +1807,22 @@ int main(int argc, char *argv[]) {
             }
         } 
         else {
-            Interpreter interpreter;
-            interpreter.interpret(statements);
+            Resolver resolver;
+            resolver.resolve(statements);
             
-            if (interpreter.hasError()) {
-                cerr << interpreter.getError() << endl;
-                exitCode = 70;
+            if (resolver.hasError()) {
+                cerr << resolver.getError() << endl;
+                exitCode = 65;
+            }
+            else {
+                Interpreter interpreter;
+                interpreter.setLocals(resolver.getLocals());
+                interpreter.interpret(statements);
+                
+                if (interpreter.hasError()) {
+                    cerr << interpreter.getError() << endl;
+                    exitCode = 70;
+                }
             }
             
             for (Stmt* stmt : statements) {
