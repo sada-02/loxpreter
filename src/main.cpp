@@ -354,6 +354,13 @@ class Interpreter {
         if (leftType == "nil" && rightType == "nil") return true;
         if (leftType == "nil" || rightType == "nil") return false;
         if (leftType != rightType) return false;
+        
+        if (leftType == "number") {
+            double leftNum = stod(left);
+            double rightNum = stod(right);
+            return leftNum == rightNum;
+        }
+        
         return left == right;
     }
     
