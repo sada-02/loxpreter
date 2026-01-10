@@ -10,12 +10,16 @@ using namespace std;
 string read_file_contents(const string& filename);
 
 string formatNumber(const string& numStr) {
-    double value = stod(numStr);
-    ostringstream oss;
-    oss << value;
-    string result = oss.str();
-    if(result.find('.') == string::npos) {
-        result += ".0";
+    if(numStr.find('.') == string::npos) {
+        return numStr + ".0";
+    }
+    
+    string result = numStr;
+    while(result.back() == '0' && result.find('.') != string::npos) {
+        result.pop_back();
+    }
+    if(result.back() == '.') {
+        result += "0";
     }
     return result;
 }
