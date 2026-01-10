@@ -357,6 +357,23 @@ struct AssignExpr : Expr {
     }
 };
 
+struct LogicalExpr : Expr {
+    Expr* left;
+    string op;
+    Expr* right;
+    
+    LogicalExpr(Expr* l, string o, Expr* r) : left(l), op(o), right(r) {}
+    
+    ~LogicalExpr() {
+        delete left;
+        delete right;
+    }
+    
+    string toString() override {
+        return "(" + op + " " + left->toString() + " " + right->toString() + ")";
+    }
+};
+
 struct Stmt {
     virtual ~Stmt() {}
 };
@@ -395,6 +412,33 @@ struct BlockStmt : Stmt {
         for (auto stmt : statements) {
             delete stmt;
         }
+    }
+};
+
+struct IfStmt : Stmt {
+    Expr* condition;
+    Stmt* thenBranch;
+    Stmt* elseBranch;
+    
+    IfStmt(Expr* cond, Stmt* thenBr, Stmt* elseBr) 
+        : condition(cond), thenBranch(thenBr), elseBranch(elseBr) {}
+    
+    ~IfStmt() {
+        delete condition;
+        delete thenBranch;
+        if (elseBranch) delete elseBranch;
+    }
+};
+
+struct WhileStmt : Stmt {
+    Expr* condition;
+    Stmt* body;
+    
+    WhileStmt(Expr* cond, Stmt* b) : condition(cond), body(b) {}
+    
+    ~WhileStmt() {
+        delete condition;
+        delete body;
     }
 };
 
@@ -589,6 +633,17 @@ class Interpreter {
                 return {result ? "true" : "false", "boolean"};
             }
         }
+        else if (auto* logical = dynamic_cast<LogicalExpr*>(expr)) {
+            Value left = evaluate(logical->left);
+            
+            if (logical->op == "or") {
+                if (isTruthy(left.val, left.type)) return left;
+            } else {
+                if (!isTruthy(left.val, left.type)) return left;
+            }
+            
+            return evaluate(logical->right);
+        }
         
         return {"", "nil"};
     }
@@ -627,6 +682,27 @@ class Interpreter {
         }
         else if (auto* blockStmt = dynamic_cast<BlockStmt*>(stmt)) {
             executeBlock(blockStmt->statements, new Environment(environment));
+        }
+        else if (auto* ifStmt = dynamic_cast<IfStmt*>(stmt)) {
+            Value condition = evaluate(ifStmt->condition);
+            if (hadRuntimeError) return;
+            
+            if (isTruthy(condition.val, condition.type)) {
+                execute(ifStmt->thenBranch);
+            } else if (ifStmt->elseBranch != nullptr) {
+                execute(ifStmt->elseBranch);
+            }
+        }
+        else if (auto* whileStmt = dynamic_cast<WhileStmt*>(stmt)) {
+            while (true) {
+                Value condition = evaluate(whileStmt->condition);
+                if (hadRuntimeError) return;
+                
+                if (!isTruthy(condition.val, condition.type)) break;
+                
+                execute(whileStmt->body);
+                if (hadRuntimeError) return;
+            }
         }
     }
     
@@ -892,8 +968,32 @@ class Parser {
         return expr;
     }
     
-    Expr* assignmentExpr() {
+    Expr* orExpr() {
+        Expr* expr = andExpr();
+        
+        while (match({"OR"})) {
+            string op = previous().lexeme;
+            Expr* right = andExpr();
+            expr = new LogicalExpr(expr, op, right);
+        }
+        
+        return expr;
+    }
+    
+    Expr* andExpr() {
         Expr* expr = equalityExpr();
+        
+        while (match({"AND"})) {
+            string op = previous().lexeme;
+            Expr* right = equalityExpr();
+            expr = new LogicalExpr(expr, op, right);
+        }
+        
+        return expr;
+    }
+    
+    Expr* assignmentExpr() {
+        Expr* expr = orExpr();
         
         if (match({"EQUAL"})) {
             tok equals = previous();
@@ -919,7 +1019,10 @@ class Parser {
     }
     
     Stmt* statement() {
+        if (match({"FOR"})) return forStatement();
+        if (match({"IF"})) return ifStatement();
         if (match({"PRINT"})) return printStatement();
+        if (match({"WHILE"})) return whileStatement();
         if (match({"LEFT_BRACE"})) return new BlockStmt(block());
         return expressionStatement();
     }
@@ -928,6 +1031,79 @@ class Parser {
         Expr* value = expressionExpr();
         consume("SEMICOLON", "Expect ';' after value.");
         return new PrintStmt(value);
+    }
+    
+    Stmt* ifStatement() {
+        consume("LEFT_PAREN", "Expect '(' after 'if'.");
+        Expr* condition = expressionExpr();
+        consume("RIGHT_PAREN", "Expect ')' after if condition.");
+        
+        Stmt* thenBranch = statement();
+        Stmt* elseBranch = nullptr;
+        if (match({"ELSE"})) {
+            elseBranch = statement();
+        }
+        
+        return new IfStmt(condition, thenBranch, elseBranch);
+    }
+    
+    Stmt* whileStatement() {
+        consume("LEFT_PAREN", "Expect '(' after 'while'.");
+        Expr* condition = expressionExpr();
+        consume("RIGHT_PAREN", "Expect ')' after condition.");
+        Stmt* body = statement();
+        
+        return new WhileStmt(condition, body);
+    }
+    
+    Stmt* forStatement() {
+        consume("LEFT_PAREN", "Expect '(' after 'for'.");
+        
+        Stmt* initializer;
+        if (match({"SEMICOLON"})) {
+            initializer = nullptr;
+        } 
+        else if (match({"VAR"})) {
+            initializer = varDeclaration();
+        } 
+        else {
+            initializer = expressionStatement();
+        }
+        
+        Expr* condition = nullptr;
+        if (!check("SEMICOLON")) {
+            condition = expressionExpr();
+        }
+        consume("SEMICOLON", "Expect ';' after loop condition.");
+        
+        Expr* increment = nullptr;
+        if (!check("RIGHT_PAREN")) {
+            increment = expressionExpr();
+        }
+        consume("RIGHT_PAREN", "Expect ')' after for clauses.");
+        
+        Stmt* body = statement();
+        
+        if (increment != nullptr) {
+            vector<Stmt*> bodyStatements;
+            bodyStatements.push_back(body);
+            bodyStatements.push_back(new ExprStmt(increment));
+            body = new BlockStmt(bodyStatements);
+        }
+        
+        if (condition == nullptr) {
+            condition = new LiteralExpr("true", "boolean");
+        }
+        body = new WhileStmt(condition, body);
+        
+        if (initializer != nullptr) {
+            vector<Stmt*> statements;
+            statements.push_back(initializer);
+            statements.push_back(body);
+            body = new BlockStmt(statements);
+        }
+        
+        return body;
     }
     
     Stmt* expressionStatement() {
