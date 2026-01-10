@@ -277,6 +277,8 @@ class Parser {
     private:
     vector<tok>& tokens;
     int curr;
+    bool hadError;
+    string errorMsg;
     
     tok peek() {
         return tokens[curr];
@@ -310,6 +312,39 @@ class Parser {
         return false;
     }
     
+    void error(const string& message) {
+        hadError = true;
+        tok token = peek();
+        if (token.type == "EOF") {
+            errorMsg = "[line " + to_string(lineNo) + "] Error at end: " + message;
+        } else {
+            errorMsg = "[line " + to_string(lineNo) + "] Error at '" + token.lexeme + "': " + message;
+        }
+    }
+    
+    tok consume(const string& type, const string& message) {
+        if (check(type)) return advance();
+        error(message);
+        return peek();
+    }
+    
+    void synchronize() {
+        advance();
+        
+        while (!isAtEnd()) {
+            if (previous().type == "SEMICOLON") return;
+            
+            if (peek().type == "CLASS" || peek().type == "FUN" || 
+                peek().type == "VAR" || peek().type == "FOR" ||
+                peek().type == "IF" || peek().type == "WHILE" ||
+                peek().type == "PRINT" || peek().type == "RETURN") {
+                return;
+            }
+            
+            advance();
+        }
+    }
+    
     string primary() {
         if (match({"FALSE"})) return "false";
         if (match({"TRUE"})) return "true";
@@ -325,10 +360,11 @@ class Parser {
         
         if (match({"LEFT_PAREN"})) {
             string expr = expression();
-            advance(); 
+            consume("RIGHT_PAREN", "Expect ')' after expression.");
             return "(group " + expr + ")";
         }
         
+        error("Expect expression.");
         return "";
     }
     
@@ -395,10 +431,22 @@ class Parser {
     }
     
     public:
-    Parser(vector<tok>& tokens) : tokens(tokens), curr(0) {}
+    Parser(vector<tok>& tokens) : tokens(tokens), curr(0), hadError(false), errorMsg("") {}
     
     string parse() {
-        return expression();
+        try {
+            return expression();
+        } catch (...) {
+            return "";
+        }
+    }
+    
+    bool hasError() {
+        return hadError;
+    }
+    
+    string getError() {
+        return errorMsg;
     }
 };
 
@@ -446,7 +494,14 @@ int main(int argc, char *argv[]) {
         
         Parser parser(validTokens);
         string result = parser.parse();
-        cout << result << endl;
+        
+        if (parser.hasError()) {
+            cerr << parser.getError() << endl;
+            exitCode = 65;
+        } 
+        else {
+            cout << result << endl;
+        }
     }
     else {
         cerr << "Unknown command: " << command << endl;
