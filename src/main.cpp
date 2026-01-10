@@ -12,6 +12,19 @@
 using namespace std;
 string read_file_contents(const string& filename);
 
+string doubleToString(double value) {
+    ostringstream oss;
+    oss << fixed << setprecision(15) << value;
+    string result = oss.str();
+
+    if (result.find('.') != string::npos) {
+        result.erase(result.find_last_not_of('0') + 1, string::npos);
+        if (result.back() == '.') result.pop_back();
+    }
+
+    return result;
+}
+
 string formatNumber(const string& numStr) {
     if(numStr.find('.') == string::npos) {
         return numStr + ".0";
@@ -559,7 +572,7 @@ struct ClockNative : LoxCallable {
         auto duration = now.time_since_epoch();
         auto millis = chrono::duration_cast<chrono::milliseconds>(duration).count();
         double seconds = millis / 1000.0;
-        return {to_string(seconds), "number"};
+        return {doubleToString(seconds), "number"};
     }
     
     string toString() override {
@@ -666,7 +679,7 @@ class Interpreter {
                     return {"", "nil"};
                 }
                 double num = stod(right.val);
-                return {to_string(-num), "number"};
+                return {doubleToString(-num), "number"};
             }
             else if (unary->op == "!") {
                 bool truthiness = isTruthy(right.val, right.type);
@@ -695,12 +708,12 @@ class Interpreter {
                     }
                     result = leftNum / rightNum;
                 }
-                return {to_string(result), "number"};
+                return {doubleToString(result), "number"};
             }
             else if (binary->op == "+") {
                 if (left.type == "number" && right.type == "number") {
                     double result = stod(left.val) + stod(right.val);
-                    return {to_string(result), "number"};
+                    return {doubleToString(result), "number"};
                 }
                 else if (left.type == "string" && right.type == "string") {
                     return {left.val + right.val, "string"};
@@ -792,7 +805,8 @@ class Interpreter {
                     if (num == floor(num)) {
                         cout << static_cast<long long>(num) << endl;
                     } else {
-                        cout << num << endl;
+                        cout << fixed << setprecision(15) << num << endl;
+                        cout.unsetf(ios::fixed);
                     }
                 }
                  else if (value.type == "string") {
