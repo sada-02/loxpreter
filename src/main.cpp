@@ -805,8 +805,7 @@ class Interpreter {
                     if (num == floor(num)) {
                         cout << static_cast<long long>(num) << endl;
                     } else {
-                        cout << fixed << setprecision(15) << num << endl;
-                        cout.unsetf(ios::fixed);
+                        cout << doubleToString(num) << endl;
                     }
                 }
                  else if (value.type == "string") {
@@ -1526,7 +1525,7 @@ int main(int argc, char *argv[]) {
                     if (num == floor(num)) {
                         cout << static_cast<long long>(num) << endl;
                     } else {
-                        cout << num << endl;
+                        cout << doubleToString(num) << endl;
                     }
                 } 
                 else if (result.type == "string") {
