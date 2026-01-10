@@ -273,6 +273,10 @@ void handleTokenisation(string& file) {
     Tokens.push_back({"EOF","","null"});
 }
 
+void handleParse(string& file) {
+
+}
+
 int main(int argc, char *argv[]) {
     cout << unitbuf;
     cerr << unitbuf;
@@ -303,6 +307,15 @@ int main(int argc, char *argv[]) {
             }
         }
     } 
+    else if(command == "parse") {
+        lineNo = 1;
+        string file = read_file_contents(argv[2]);
+        handleTokenisation(file);
+
+        for(int i=0 ;i<Tokens.size() ;i++) {
+            cout<<Tokens[i].lexeme<<endl;
+        }
+    }
     else {
         cerr << "Unknown command: " << command << endl;
         exitCode = 1;
