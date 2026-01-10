@@ -591,6 +591,7 @@ class Interpreter {
     Environment* environment;
     Environment* globals;
     map<string, LoxCallable*> functions;
+    int nextFunctionId;
     
     void runtimeError(const string& message) {
         hadRuntimeError = true;
@@ -624,7 +625,7 @@ class Interpreter {
         string type; 
     };
     
-    Interpreter() : hadRuntimeError(false), runtimeErrorMsg(""), isReturning(false) {
+    Interpreter() : hadRuntimeError(false), runtimeErrorMsg(""), isReturning(false), nextFunctionId(0) {
         globals = new Environment();
         environment = globals;
         
@@ -854,8 +855,9 @@ class Interpreter {
         }
         else if (auto* funStmt = dynamic_cast<FunStmt*>(stmt)) {
             LoxFunction* function = new LoxFunction(funStmt, environment);
-            functions[funStmt->name] = function;
-            environment->define(funStmt->name, funStmt->name, "function");
+            string functionId = "__fn_" + to_string(nextFunctionId++);
+            functions[functionId] = function;
+            environment->define(funStmt->name, functionId, "function");
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (returnStmt->value != nullptr) {
