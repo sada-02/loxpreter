@@ -14,7 +14,7 @@ string read_file_contents(const string& filename);
 
 string doubleToString(double value) {
     ostringstream oss;
-    oss << fixed << setprecision(15) << value;
+    oss << fixed << setprecision(10) << value;
     string result = oss.str();
 
     if (result.find('.') != string::npos) {
