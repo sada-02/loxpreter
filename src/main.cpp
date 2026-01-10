@@ -2126,10 +2126,15 @@ int main(int argc, char *argv[]) {
             else {
                 Interpreter interpreter;
                 interpreter.setLocals(resolver.getLocals());
-                interpreter.interpret(statements);
-                
-                if (interpreter.hasError()) {
-                    cerr << interpreter.getError() << endl;
+                try {
+                    interpreter.interpret(statements);
+                    
+                    if (interpreter.hasError()) {
+                        cerr << interpreter.getError() << endl;
+                        exitCode = 70;
+                    }
+                } catch (const runtime_error& e) {
+                    cerr << e.what() << endl;
                     exitCode = 70;
                 }
             }
