@@ -691,7 +691,7 @@ public:
     
     LoxInstance(LoxClass* k) : klass(k) {}
     
-    pair<string, string> get(const string& name);
+    pair<string, string> get(const string& name, class Interpreter* interpreter);
     
     void set(const string& name, const string& value, const string& type) {
         fields[name] = {value, type};
@@ -1020,6 +1020,21 @@ class Interpreter {
         return nullptr;
     }
     
+    string storeFunction(LoxCallable* function) {
+        string functionId = "__fn_" + to_string(nextFunctionId++);
+        functions[functionId] = function;
+        return functionId;
+    }
+    
+    string findInstanceId(LoxInstance* instance) {
+        for (const auto& pair : instances) {
+            if (pair.second == instance) {
+                return pair.first;
+            }
+        }
+        return "";
+    }
+    
     Value lookupVariable(const string& name, Expr* expr) {
         auto it = locals.find(expr);
         if (it != locals.end()) {
@@ -1194,7 +1209,7 @@ class Interpreter {
             if (object.type == "instance") {
                 LoxInstance* instance = instances[object.val];
                 if (instance != nullptr) {
-                    auto result = instance->get(get->name);
+                    auto result = instance->get(get->name, this);
                     return {result.first, result.second};
                 }
             }
@@ -1390,7 +1405,7 @@ pair<string, string> LoxClass::call(Interpreter* interpreter, vector<pair<string
     return {instanceId, "instance"};
 }
 
-pair<string, string> LoxInstance::get(const string& name) {
+pair<string, string> LoxInstance::get(const string& name, Interpreter* interpreter) {
     auto it = fields.find(name);
     if (it != fields.end()) {
         return it->second;
@@ -1398,7 +1413,11 @@ pair<string, string> LoxInstance::get(const string& name) {
     
     LoxFunction* method = klass->findMethod(name);
     if (method != nullptr) {
-        throw runtime_error("Method binding not yet implemented for '" + name + "'.");
+        string instanceId = interpreter->findInstanceId(this);      
+        LoxFunction* bound = method->bind(instanceId, "instance", interpreter);
+        string functionId = interpreter->storeFunction(bound);
+        
+        return {functionId, "function"};
     }
     
     throw runtime_error("Undefined property '" + name + "'.");
