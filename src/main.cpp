@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <chrono>
 using namespace std;
 string read_file_contents(const string& filename);
 
@@ -374,6 +375,29 @@ struct LogicalExpr : Expr {
     }
 };
 
+struct CallExpr : Expr {
+    Expr* callee;
+    vector<Expr*> arguments;
+    
+    CallExpr(Expr* c, vector<Expr*> args) : callee(c), arguments(args) {}
+    
+    ~CallExpr() {
+        delete callee;
+        for (auto arg : arguments) {
+            delete arg;
+        }
+    }
+    
+    string toString() override {
+        string result = "(call " + callee->toString();
+        for (auto arg : arguments) {
+            result += " " + arg->toString();
+        }
+        result += ")";
+        return result;
+    }
+};
+
 struct Stmt {
     virtual ~Stmt() {}
 };
@@ -442,6 +466,29 @@ struct WhileStmt : Stmt {
     }
 };
 
+struct FunStmt : Stmt {
+    string name;
+    vector<string> params;
+    vector<Stmt*> body;
+    
+    FunStmt(string n, vector<string> p, vector<Stmt*> b) 
+        : name(n), params(p), body(b) {}
+    
+    ~FunStmt() {
+        for (auto stmt : body) {
+            delete stmt;
+        }
+    }
+};
+
+struct ReturnStmt : Stmt {
+    Expr* value;
+    
+    ReturnStmt(Expr* v) : value(v) {}
+    
+    ~ReturnStmt() { if (value) delete value; }
+};
+
 class Environment {
     private:
     map<string, pair<string, string>> values;
@@ -478,11 +525,59 @@ class Environment {
     }
 };
 
+class Interpreter;
+
+struct LoxCallable {
+    virtual ~LoxCallable() {}
+    virtual int arity() = 0;
+    virtual pair<string, string> call(Interpreter* interpreter, vector<pair<string, string>>& arguments) = 0;
+    virtual string toString() = 0;
+};
+
+struct LoxFunction : LoxCallable {
+    FunStmt* declaration;
+    Environment* closure;
+    
+    LoxFunction(FunStmt* decl, Environment* clos) : declaration(decl), closure(clos) {}
+    
+    int arity() override {
+        return declaration->params.size();
+    }
+    
+    pair<string, string> call(Interpreter* interpreter, vector<pair<string, string>>& arguments) override;
+    
+    string toString() override {
+        return "<fn " + declaration->name + ">";
+    }
+};
+
+struct ClockNative : LoxCallable {
+    int arity() override { return 0; }
+    
+    pair<string, string> call(Interpreter* interpreter, vector<pair<string, string>>& arguments) override {
+        auto now = chrono::system_clock::now();
+        auto duration = now.time_since_epoch();
+        auto millis = chrono::duration_cast<chrono::milliseconds>(duration).count();
+        double seconds = millis / 1000.0;
+        return {to_string(seconds), "number"};
+    }
+    
+    string toString() override {
+        return "<native fn>";
+    }
+};
+
 class Interpreter {
+    public:
+    bool isReturning;
+    pair<string, string> returnValue;
+    
     private:
     bool hadRuntimeError;
     string runtimeErrorMsg;
     Environment* environment;
+    Environment* globals;
+    map<string, LoxCallable*> functions;
     
     void runtimeError(const string& message) {
         hadRuntimeError = true;
@@ -516,12 +611,20 @@ class Interpreter {
         string type; 
     };
     
-    Interpreter() : hadRuntimeError(false), runtimeErrorMsg("") {
-        environment = new Environment();
+    Interpreter() : hadRuntimeError(false), runtimeErrorMsg(""), isReturning(false) {
+        globals = new Environment();
+        environment = globals;
+        
+        // Define native functions
+        functions["clock"] = new ClockNative();
+        globals->define("clock", "clock", "function");
     }
     
     ~Interpreter() {
-        delete environment;
+        delete globals;
+        for (auto& pair : functions) {
+            delete pair.second;
+        }
     }
     
     Value evaluate(Expr* expr) {
@@ -644,6 +747,35 @@ class Interpreter {
             
             return evaluate(logical->right);
         }
+        else if (auto* call = dynamic_cast<CallExpr*>(expr)) {
+            Value callee = evaluate(call->callee);
+            
+            vector<pair<string, string>> arguments;
+            for (Expr* arg : call->arguments) {
+                Value argValue = evaluate(arg);
+                arguments.push_back({argValue.val, argValue.type});
+            }
+            
+            if (callee.type != "function") {
+                runtimeError("Can only call functions and classes.");
+                return {"", "nil"};
+            }
+            
+            LoxCallable* function = functions[callee.val];
+            if (function == nullptr) {
+                runtimeError("Undefined function '" + callee.val + "'.");
+                return {"", "nil"};
+            }
+            
+            if (arguments.size() != function->arity()) {
+                runtimeError("Expected " + to_string(function->arity()) + 
+                           " arguments but got " + to_string(arguments.size()) + ".");
+                return {"", "nil"};
+            }
+            
+            auto result = function->call(this, arguments);
+            return {result.first, result.second};
+        }
         
         return {"", "nil"};
     }
@@ -701,8 +833,23 @@ class Interpreter {
                 if (!isTruthy(condition.val, condition.type)) break;
                 
                 execute(whileStmt->body);
-                if (hadRuntimeError) return;
+                if (hadRuntimeError || isReturning) return;
             }
+        }
+        else if (auto* funStmt = dynamic_cast<FunStmt*>(stmt)) {
+            LoxFunction* function = new LoxFunction(funStmt, environment);
+            functions[funStmt->name] = function;
+            environment->define(funStmt->name, funStmt->name, "function");
+        }
+        else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
+            if (returnStmt->value != nullptr) {
+                Value value = evaluate(returnStmt->value);
+                returnValue = {value.val, value.type};
+            } 
+            else {
+                returnValue = {"nil", "nil"};
+            }
+            isReturning = true;
         }
     }
     
@@ -712,7 +859,7 @@ class Interpreter {
         
         for (Stmt* stmt : statements) {
             execute(stmt);
-            if (hadRuntimeError) break;
+            if (hadRuntimeError || isReturning) break;
         }
         
         environment = previous;
@@ -729,6 +876,24 @@ class Interpreter {
     bool hasError() { return hadRuntimeError; }
     string getError() { return runtimeErrorMsg; }
 };
+
+pair<string, string> LoxFunction::call(Interpreter* interpreter, vector<pair<string, string>>& arguments) {
+    Environment* environment = new Environment(closure);
+    
+    for (size_t i = 0; i < declaration->params.size(); i++) {
+        environment->define(declaration->params[i], arguments[i].first, arguments[i].second);
+    }
+    
+    interpreter->isReturning = false;
+    interpreter->executeBlock(declaration->body, environment);
+    
+    if (interpreter->isReturning) {
+        interpreter->isReturning = false;
+        return interpreter->returnValue;
+    }
+    
+    return {"nil", "nil"};
+}
 
 class Parser {
     private:
@@ -863,6 +1028,32 @@ class Parser {
         return primary();
     }
     
+    Expr* callExpr() {
+        Expr* expr = primaryExpr();
+        
+        while (true) {
+            if (match({"LEFT_PAREN"})) {
+                vector<Expr*> arguments;
+                if (!check("RIGHT_PAREN")) {
+                    do {
+                        if (arguments.size() >= 255) {
+                            error("Can't have more than 255 arguments.");
+                            break;
+                        }
+                        arguments.push_back(expressionExpr());
+                    } while (match({"COMMA"}));
+                }
+                consume("RIGHT_PAREN", "Expect ')' after arguments.");
+                expr = new CallExpr(expr, arguments);
+            } 
+            else {
+                break;
+            }
+        }
+        
+        return expr;
+    }
+    
     Expr* unaryExpr() {
         if (match({"BANG", "MINUS"})) {
             string op = previous().lexeme;
@@ -870,7 +1061,7 @@ class Parser {
             return new UnaryExpr(op, right);
         }
         
-        return primaryExpr();
+        return callExpr();
     }
     
     string factor() {
@@ -1023,9 +1214,19 @@ class Parser {
         if (match({"FOR"})) return forStatement();
         if (match({"IF"})) return ifStatement();
         if (match({"PRINT"})) return printStatement();
+        if (match({"RETURN"})) return returnStatement();
         if (match({"WHILE"})) return whileStatement();
         if (match({"LEFT_BRACE"})) return new BlockStmt(block());
         return expressionStatement();
+    }
+    
+    Stmt* returnStatement() {
+        Expr* value = nullptr;
+        if (!check("SEMICOLON")) {
+            value = expressionExpr();
+        }
+        consume("SEMICOLON", "Expect ';' after return value.");
+        return new ReturnStmt(value);
     }
     
     Stmt* printStatement() {
@@ -1138,6 +1339,7 @@ class Parser {
     
     Stmt* declaration() {
         try {
+            if (match({"FUN"})) return function("function");
             if (match({"VAR"})) return varDeclaration();
             return statement();
         }
@@ -1145,6 +1347,27 @@ class Parser {
             synchronize();
             return nullptr;
         }
+    }
+    
+    Stmt* function(const string& kind) {
+        tok name = consume("IDENTIFIER", "Expect " + kind + " name.");
+        consume("LEFT_PAREN", "Expect '(' after " + kind + " name.");
+        
+        vector<string> parameters;
+        if (!check("RIGHT_PAREN")) {
+            do {
+                if (parameters.size() >= 255) {
+                    error("Can't have more than 255 parameters.");
+                }
+                parameters.push_back(consume("IDENTIFIER", "Expect parameter name.").lexeme);
+            } while (match({"COMMA"}));
+        }
+        consume("RIGHT_PAREN", "Expect ')' after parameters.");
+        
+        consume("LEFT_BRACE", "Expect '{' before " + kind + " body.");
+        vector<Stmt*> body = block();
+        
+        return new FunStmt(name.lexeme, parameters, body);
     }
     
     public:
