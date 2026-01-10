@@ -712,7 +712,8 @@ private:
     enum FunctionType {
         NONE,
         FUNCTION,
-        METHOD
+        METHOD,
+        INITIALIZER
     };
     
     enum ClassType {
@@ -879,6 +880,9 @@ private:
             
             for (FunStmt* method : classStmt->methods) {
                 FunctionType declaration = METHOD;
+                if (method->name == "init") {
+                    declaration = INITIALIZER;
+                }
                 
                 FunctionType enclosingFunction = currentFunction;
                 currentFunction = declaration;
@@ -907,6 +911,11 @@ private:
             }
             
             if (returnStmt->value != nullptr) {
+                if (currentFunction == INITIALIZER) {
+                    hadError = true;
+                    errorMsg = "Can't return a value from an initializer.";
+                    return;
+                }
                 resolveExpr(returnStmt->value);
             }
         }
