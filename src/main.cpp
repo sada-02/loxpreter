@@ -1298,6 +1298,29 @@ class Interpreter {
         else if (auto* thisExpr = dynamic_cast<ThisExpr*>(expr)) {
             return lookupVariable("this", thisExpr);
         }
+        else if (auto* superExpr = dynamic_cast<SuperExpr*>(expr)) {
+            Value distance = lookupVariable("super", superExpr);
+            
+            LoxClass* superclass = dynamic_cast<LoxClass*>(functions[distance.val]);
+            if (superclass == nullptr) {
+                hadRuntimeError = true;
+                runtimeErrorMsg = "Superclass must be a class.";
+                return {"nil", "nil"};
+            }
+            
+            Value object = lookupVariable("this", superExpr);
+            
+            LoxFunction* method = superclass->findMethod(superExpr->method);
+            if (method == nullptr) {
+                hadRuntimeError = true;
+                runtimeErrorMsg = "Undefined property '" + superExpr->method + "'.";
+                return {"nil", "nil"};
+            }
+            
+            LoxFunction* bound = method->bind(object.val, object.type, this);
+            string functionId = storeFunction(bound);
+            return {functionId, "function"};
+        }
         
         return {"", "nil"};
     }
@@ -1381,6 +1404,39 @@ class Interpreter {
             environment->define(funStmt->name, functionId, "function");
         }
         else if (auto* classStmt = dynamic_cast<ClassStmt*>(stmt)) {
+            LoxClass* superclass = nullptr;
+            if (classStmt->superclass != nullptr) {
+                Value superValue = evaluate(classStmt->superclass);
+                if (superValue.type != "function") {
+                    hadRuntimeError = true;
+                    runtimeErrorMsg = "Superclass must be a class.";
+                    return;
+                }
+                LoxCallable* callable = functions[superValue.val];
+                superclass = dynamic_cast<LoxClass*>(callable);
+                if (superclass == nullptr) {
+                    hadRuntimeError = true;
+                    runtimeErrorMsg = "Superclass must be a class.";
+                    return;
+                }
+            }
+            
+            environment->define(classStmt->name, "nil", "nil");
+            
+            if (classStmt->superclass != nullptr) {
+                environment = new Environment(environment);
+                environment->define("super", superclass ? ("__class_" + to_string(reinterpret_cast<uintptr_t>(superclass))) : "nil", "function");
+                
+                auto it = functions.begin();
+                while (it != functions.end()) {
+                    if (it->second == superclass) {
+                        environment->assign("super", it->first, "function");
+                        break;
+                    }
+                    ++it;
+                }
+            }
+            
             map<string, LoxFunction*> methods;
             for (FunStmt* method : classStmt->methods) {
                 bool isInit = (method->name == "init");
@@ -1388,10 +1444,15 @@ class Interpreter {
                 methods[method->name] = function;
             }
             
-            LoxClass* klass = new LoxClass(classStmt->name, methods);
+            LoxClass* klass = new LoxClass(classStmt->name, superclass, methods);
+            
+            if (classStmt->superclass != nullptr) {
+                environment = environment->enclosing;
+            }
+            
             string classId = "__class_" + to_string(nextFunctionId++);
             functions[classId] = klass;
-            environment->define(classStmt->name, classId, "function");
+            environment->assign(classStmt->name, classId, "function");
         }
         else if (auto* returnStmt = dynamic_cast<ReturnStmt*>(stmt)) {
             if (returnStmt->value != nullptr) {
