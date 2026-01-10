@@ -190,6 +190,9 @@ void handleTokenisation(string& file) {
         Tokens.push_back({"error","",""});
         errors.push_back("[line "+ to_string(lineNo) +"] Error: Unterminated string.");
     }
+    if(insideNum) {
+        Tokens.push_back({"NUMBER",currNum,to_string(stod(currNum))});
+    }
     Tokens.push_back({"EOF","","null"});
 }
 
