@@ -1,50 +1,143 @@
-[![progress-banner](https://backend.codecrafters.io/progress/interpreter/dfba7676-f1c9-4cc3-91d5-1b6fa7a720b2)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Loxpreter
 
-This is a starting point for C++ solutions to the
-["Build your own Interpreter" Challenge](https://app.codecrafters.io/courses/interpreter/overview).
 
-This challenge follows the book
-[Crafting Interpreters](https://craftinginterpreters.com/) by Robert Nystrom.
+A feature-complete tree-walk interpreter for the Lox programming language, implemented in C++ following Robert Nystrom's [Crafting Interpreters](https://craftinginterpreters.com/). This interpreter demonstrates fundamental compiler and interpreter concepts including lexical analysis, parsing, semantic analysis, and runtime evaluation.
 
-In this challenge you'll build an interpreter for
-[Lox](https://craftinginterpreters.com/the-lox-language.html), a simple
-scripting language. Along the way, you'll learn about tokenization, ASTs,
-tree-walk interpreters and more.
+## About Lox
 
-Before starting this challenge, make sure you've read the "Welcome" part of the
-book that contains these chapters:
+Lox is a dynamically-typed scripting language designed for educational purposes. It features:
+- C-style syntax with familiar control flow structures
+- First-class functions with closures
+- Object-oriented programming with classes and inheritance
+- Dynamic typing with automatic memory management
 
-- [Introduction](https://craftinginterpreters.com/introduction.html) (chapter 1)
-- [A Map of the Territory](https://craftinginterpreters.com/a-map-of-the-territory.html)
-  (chapter 2)
-- [The Lox Language](https://craftinginterpreters.com/the-lox-language.html)
-  (chapter 3)
+## Features
 
-These chapters don't involve writing code, so they won't be covered in this
-challenge. This challenge will start from chapter 4,
-[Scanning](https://craftinginterpreters.com/scanning.html).
+### Language Support
+- **Data Types**: Numbers (double-precision floating point), strings, booleans, and nil
+- **Operators**: Arithmetic (`+`, `-`, `*`, `/`), comparison (`<`, `<=`, `>`, `>=`, `==`, `!=`), logical (`and`, `or`, `!`)
+- **Variables**: Dynamic variable declaration and assignment with lexical scoping
+- **Control Flow**: `if`/`else` statements, `while` loops, and `for` loops
+- **Functions**: First-class functions with closures, recursion support, and `return` statements
+- **Classes**: Object-oriented programming with class declarations, methods, constructors (`init`), and field access
+- **Inheritance**: Single inheritance with `super` keyword for accessing parent class methods
+- **Built-in Functions**: Native `clock()` function for timing operations
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+### Interpreter Architecture
+- **Lexical Scanner**: Hand-written tokenizer that recognizes all Lox language tokens, handles comments, and detects lexical errors
+- **Recursive Descent Parser**: Builds an Abstract Syntax Tree (AST) from tokens, implementing Lox's complete grammar with proper precedence
+- **Semantic Analyzer**: Static resolver that performs variable resolution and binding before interpretation, catching semantic errors early
+- **Tree-Walk Interpreter**: Evaluates the AST with support for nested scopes, closures, and object-oriented features
+- **Environment Management**: Implements lexical scoping with environment chains for variable and function lookups
 
-# Passing the first stage
+### Error Handling
+- Comprehensive error detection and reporting for:
+  - Lexical errors (unterminated strings, unexpected characters)
+  - Syntax errors (malformed expressions, missing tokens)
+  - Runtime errors (type mismatches, undefined variables, invalid operations)
+  - Semantic errors (variable shadowing issues, invalid return statements)
 
-The entry point for your program is in `src/main.cpp`. Study and uncomment the
-relevant code, and push your changes to pass the first stage:
+## Implementation Details
 
+The interpreter is structured in multiple phases:
+
+1. **Tokenization**: The source code is scanned character-by-character to produce a stream of tokens, handling both single-character (`(`, `)`, `{`, `}`, `;`) and multi-character tokens (`==`, `!=`, `<=`, `>=`)
+
+2. **Parsing**: A recursive descent parser builds an AST using expression and statement node types, implementing operator precedence from lowest (assignment, logical) to highest (unary, primary)
+
+3. **Resolution**: A static analysis pass walks the AST to resolve variable bindings and detect semantic errors before runtime, storing scope depth information for each variable reference
+
+4. **Interpretation**: The AST is evaluated using the Visitor pattern, maintaining runtime environments for variable storage and supporting dynamic dispatch for method calls
+
+The codebase uses C++ structs for AST nodes (expressions and statements), a custom `Environment` class for scope management, and polymorphic callable types (`LoxCallable`, `LoxFunction`, `LoxClass`) for function and class support.
+
+## Getting Started
+
+### Prerequisites
+- CMake (build system)
+- C++ compiler with C++11 support or later
+- vcpkg (for dependency management, optional)
+
+### Building the Project
+
+1. Clone the repository:
 ```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+git clone <repository-url>
+cd loxpreter
 ```
 
-Time to move on to the next stage!
+2. Build using the provided script:
+```sh
+./your_program.sh tokenize <lox-file>    # Tokenize and display tokens
+./your_program.sh parse <lox-file>       # Parse and display AST
+./your_program.sh evaluate <lox-file>    # Evaluate expressions
+./your_program.sh run <lox-file>         # Execute Lox program
+```
 
-# Stage 2 & beyond
+### Usage Examples
 
-Note: This section is for stages 2 and beyond.
+**Variables and Arithmetic:**
+```lox
+var a = 10;
+var b = 20;
+print a + b;  // 30
+```
 
-1. Ensure you have `cmake` installed locally
-2. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.cpp`.
-3. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+**Functions and Closures:**
+```lox
+fun makeCounter() {
+    var i = 0;
+    fun count() {
+        i = i + 1;
+        print i;
+    }
+    return count;
+}
+
+var counter = makeCounter();
+counter();  // 1
+counter();  // 2
+```
+
+**Classes and Inheritance:**
+```lox
+class Animal {
+    init(name) {
+        this.name = name;
+    }
+    
+    speak() {
+        print this.name + " makes a sound.";
+    }
+}
+
+class Dog < Animal {
+    speak() {
+        print this.name + " barks.";
+    }
+}
+
+var dog = Dog("Rex");
+dog.speak();  // "Rex barks."
+```
+
+## Project Structure
+
+```
+loxpreter/
+├── src/
+│   └── main.cpp           # Complete interpreter implementation
+├── CMakeLists.txt         # CMake build configuration
+├── vcpkg.json            # Package dependencies
+└── your_program.sh       # Build and run script
+```
+
+## Development
+
+This project was developed as part of the CodeCrafters "Build your own Interpreter" challenge, implementing chapters 4-13 of *Crafting Interpreters*. The implementation follows the tree-walk interpreter approach (jlox) rather than the bytecode VM approach (clox).
+
+## References
+
+- [Crafting Interpreters](https://craftinginterpreters.com/) by Robert Nystrom
+- [Lox Language Specification](https://craftinginterpreters.com/the-lox-language.html)
+- [CodeCrafters Interpreter Challenge](https://app.codecrafters.io/courses/interpreter/overview)
